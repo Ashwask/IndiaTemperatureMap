@@ -543,31 +543,69 @@ const weatherUnionLayer = L.layerGroup().addTo(map);
 let wriLayer = null;
 
 // ===== load city snapshot =====
-// Fetch live Open-Meteo current for all 39 cities in a single batched call.
-// Falls back to the committed snapshot if Open-Meteo is unreachable.
+// Three browser-live models, no key needed: Open-Meteo (ICON/IFS/GFS blend, batched),
+// MET Norway (ECMWF-backed, per-city), 7Timer (GFS forecast, per-city).
 function fetchLiveCities() {
   return fetch("cities.json").then(r => r.json()).then(cities => {
     const lats = cities.map(c => c.lat).join(",");
     const lons = cities.map(c => c.lon).join(",");
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
-      `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m` +
-      `&timezone=Asia/Kolkata`;
-    return fetch(url).then(r => {
+    const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+      `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m&timezone=Asia/Kolkata`;
+
+    const openMeteo = fetch(openMeteoUrl).then(r => {
       if (!r.ok) throw new Error("Open-Meteo HTTP " + r.status);
       return r.json();
-    }).then(data => {
-      const arr = Array.isArray(data) ? data : [data];
+    }).then(data => Array.isArray(data) ? data : [data]);
+
+    // MET Norway: per-city, ECMWF model. No CORS issues; default browser UA is accepted.
+    const metNorway = cities.map(c =>
+      fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat}&lon=${c.lon}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(j => {
+          const inst = j?.properties?.timeseries?.[0]?.data?.instant?.details;
+          return inst?.air_temperature ?? null;
+        })
+        .catch(() => null)
+    );
+
+    // 7Timer: per-city, GFS-based. First "civil" slot ≈ current.
+    const sevenTimer = cities.map(c =>
+      fetch(`https://www.7timer.info/bin/api.pl?lon=${c.lon}&lat=${c.lat}&product=civil&output=json`)
+        .then(r => r.ok ? r.json() : null)
+        .then(j => {
+          const first = j?.dataseries?.[0];
+          return first?.temp2m ?? null;
+        })
+        .catch(() => null)
+    );
+
+    return Promise.all([
+      openMeteo,
+      Promise.all(metNorway),
+      Promise.all(sevenTimer),
+    ]).then(([omArr, metArr, sevenArr]) => {
       const live = cities.map((c, i) => {
-        const cur = (arr[i] || {}).current || {};
+        const cur = (omArr[i] || {}).current || {};
+        const om = cur.temperature_2m;
+        const met = metArr[i];
+        const seven = sevenArr[i];
+        const vals = [om, met, seven].filter(v => v != null);
         return {
           name: c.name, state: c.state, lat: c.lat, lon: c.lon,
-          temperature_2m_c: cur.temperature_2m,
+          temperature_2m_c: om,
           apparent_temperature_c: cur.apparent_temperature,
           relative_humidity_pct: cur.relative_humidity_2m,
           wind_speed_10m_kmh: cur.wind_speed_10m,
+          models: { "Open-Meteo": om, "MET Norway": met, "7Timer": seven },
+          model_spread: vals.length > 1 ? Math.max(...vals) - Math.min(...vals) : null,
         };
       });
-      return { cities: live, collected_at: new Date().toISOString(), live: true };
+      const modelCounts = {
+        "Open-Meteo": live.filter(c => c.models["Open-Meteo"] != null).length,
+        "MET Norway": live.filter(c => c.models["MET Norway"] != null).length,
+        "7Timer": live.filter(c => c.models["7Timer"] != null).length,
+      };
+      return { cities: live, collected_at: new Date().toISOString(), live: true, model_counts: modelCounts };
     });
   });
 }
@@ -591,18 +629,35 @@ Promise.all([
   if (snap.live) {
     document.getElementById("live-pill").style.display = "inline-block";
     document.getElementById("refresh-link").style.display = "inline";
+    if (snap.model_counts) {
+      const mc = snap.model_counts;
+      const total = Object.values(mc).reduce((a, b) => a + b, 0);
+      const max = cities.length * 3;
+      document.getElementById("live-pill").title =
+        `Models: Open-Meteo ${mc["Open-Meteo"]}/${cities.length} · MET Norway ${mc["MET Norway"]}/${cities.length} · 7Timer ${mc["7Timer"]}/${cities.length} (${total}/${max} readings)`;
+    }
   }
 
   cities.forEach(c => {
     const marker = L.circleMarker([c.lat, c.lon], {
       radius: 9, fillColor: colorFor(c.temperature_2m_c),
       color: "#FFFFFF", weight: 2, fillOpacity: 1,
-    }).bindPopup(`
+    });
+    let modelRows = "";
+    if (c.models) {
+      modelRows = Object.entries(c.models).filter(([_, v]) => v != null).map(([k, v]) =>
+        `<div class="prow"><span>${k}</span><b>${(+v).toFixed(1)} °C</b></div>`
+      ).join("");
+      if (c.model_spread != null) {
+        modelRows += `<div class="prow" style="margin-top:4px;border-top:1px solid var(--border-light);padding-top:4px"><span>Spread</span><b style="color:${c.model_spread > 3 ? '#C00000' : 'var(--text-main)'}">${c.model_spread.toFixed(1)} °C</b></div>`;
+      }
+    }
+    marker.bindPopup(`
       <div class="pname">${c.name}<span class="city"> · ${c.state}</span></div>
-      <div class="prow"><span>Temperature</span><b>${c.temperature_2m_c.toFixed(1)} °C</b></div>
-      <div class="prow"><span>Feels like</span><b>${c.apparent_temperature_c.toFixed(1)} °C</b></div>
-      <div class="prow"><span>Humidity</span><b>${c.relative_humidity_pct}%</b></div>
-      <div class="prow"><span>Wind</span><b>${c.wind_speed_10m_kmh.toFixed(1)} km/h</b></div>
+      ${modelRows || `<div class="prow"><span>Temperature</span><b>${c.temperature_2m_c.toFixed(1)} °C</b></div>`}
+      ${c.apparent_temperature_c != null ? `<div class="prow"><span>Feels like</span><b>${c.apparent_temperature_c.toFixed(1)} °C</b></div>` : ""}
+      ${c.relative_humidity_pct != null ? `<div class="prow"><span>Humidity</span><b>${c.relative_humidity_pct}%</b></div>` : ""}
+      ${c.wind_speed_10m_kmh != null ? `<div class="prow"><span>Wind</span><b>${c.wind_speed_10m_kmh.toFixed(1)} km/h</b></div>` : ""}
     `);
     cityLayer.addLayer(marker);
   });
