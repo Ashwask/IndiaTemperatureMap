@@ -10,7 +10,7 @@ data from every public/freemium source we could reach.
 ## What's on the map
 
 - **39 city points** — three models browser-live on every page load: Open-Meteo (ICON/IFS/GFS blend, batched), MET Norway (ECMWF-backed), and 7Timer (GFS). Popups show all three values plus the model-spread Δ.
-- **0.25° heat grid** — **all 4,441 cells** covering India landmass (mainland + Andaman & Nicobar + Lakshadweep), colored by temperature. Range typically -19 °C in Ladakh to +41 °C in Rajasthan.
+- **0.25° heat grid** — **all 4,647 cells** covering India's full claim (mainland + Andaman & Nicobar + Lakshadweep + J&K incl. PoK + Ladakh incl. Aksai Chin), colored by temperature. Range typically -22 °C in Karakoram to +41 °C in Rajasthan.
 - **OpenAQ ground stations** — 570 India stations (509 CPCB + AirGradient + Clean Air Catalyst), ~340 with sane current temperature.
 - **Weather Union ground sensors** — Zomato's hyperlocal sensor fleet, 37 discovered points spanning Bengaluru/Mumbai/Delhi-NCR/Pune/Hyderabad/Chennai/Kolkata/Ahmedabad/Jaipur/Lucknow/Chandigarh/Indore/Coimbatore.
 - **Multi-source sample points** — every one of the 39 cities × up to 12 source readings, side-by-side comparison.
@@ -71,8 +71,8 @@ Keys are read from env vars (locally) or repo secrets (in CI). Nothing API-key-r
 | File | Description |
 |---|---|
 | `snapshot_cities.json` | 39 cities × current Open-Meteo readings |
-| `india_grid.json` | 4,441 grid cells geometry |
-| `india_grid_weather.json` | 4,441 cells × current weather |
+| `india_grid.json` | 4,647 grid cells geometry (India full claim) |
+| `india_grid_weather.json` | 4,647 cells × current weather |
 | `india_temp_trend.json` | 1980-2025 annual mean temperature |
 | `stations_openaq.json` | OpenAQ India temperature stations |
 | `stations_weatherunion.json` | Weather Union discovered ground sensors |

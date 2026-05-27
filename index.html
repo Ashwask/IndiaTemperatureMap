@@ -6,6 +6,11 @@
 <title>India Temperature Map</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://api.open-meteo.com" crossorigin>
+<link rel="preconnect" href="https://api.met.no" crossorigin>
+<link rel="preconnect" href="https://www.7timer.info" crossorigin>
+<link rel="dns-prefetch" href="https://basemaps.cartocdn.com">
+<link rel="dns-prefetch" href="https://unpkg.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
@@ -448,7 +453,7 @@
       <ul style="margin: 8px 0 0; padding-left: 18px; line-height: 1.7;">
         <li><strong>39 city points</strong> — current temperature from Open-Meteo (state capitals + metros)</li>
         <li><strong>570 OpenAQ stations</strong> — India ground sensors, 509 from CPCB regulatory network + 34 AirGradient + others</li>
-        <li><strong>4,441 grid cells</strong> at 0.25° (≈ 27 × 25 km each) clipped to India landmass — mainland + Andaman &amp; Nicobar + Lakshadweep. This matches the native resolution of the ECMWF/ERA5 model that Open-Meteo serves.</li>
+        <li><strong>4,647 grid cells</strong> at 0.25° (≈ 27 × 25 km each) covering India's full claim — mainland + Andaman &amp; Nicobar + Lakshadweep + Jammu &amp; Kashmir (incl. PoK) + Ladakh (incl. Aksai Chin). Polygon: datameet/maps, simplified. This matches the native resolution of the ECMWF/ERA5 model that Open-Meteo serves.</li>
       </ul>
     </div>
 
@@ -700,7 +705,7 @@ Promise.all([
   const overlays = {
     "Cities (Open-Meteo)": cityLayer,
   };
-  overlays["0.25° ≈ 27 × 25 km · 4,441 cells across India"] = gridLayer;
+  overlays["0.25° ≈ 27 × 25 km · 4,647 cells across India"] = gridLayer;
   const layerControl = L.control.layers(
     {"Light (Carto Positron)": positron, "OpenStreetMap": osm},
     overlays,
