@@ -814,13 +814,9 @@ Promise.all([
     overlays,
     { collapsed: true, position: "topright" }
   ).addTo(map);
-
-  // Auto-collapse after the user toggles any base/overlay layer.
-  function collapseLayerControl() {
-    const el = layerControl && layerControl._container;
-    if (el) el.classList.remove("leaflet-control-layers-expanded");
-  }
-  map.on("baselayerchange overlayadd overlayremove", collapseLayerControl);
+  // Default Leaflet `collapsed:true` behaviour: expand on hover, collapse on
+  // mouseout — so the user can toggle multiple layers in one sweep, then move
+  // the cursor away to dismiss. No extra per-toggle collapse hook needed.
 
   loadStationLayer("stations_openaq.json", openaqLayer, "OpenAQ", "openaq-status")
     .then(label => { if (label) layerControl.addOverlay(openaqLayer, label); });
