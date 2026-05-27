@@ -38,7 +38,7 @@ def main() -> int:
         "timezone": "Asia/Kolkata",
         "fields": ["temperature_2m_c", "apparent_temperature_c", "relative_humidity_pct", "wind_speed_10m_kmh"],
         "cities": cities,
-    }, indent=2))
+    }, separators=(",", ":")))
     print(f"wrote {len(cities)} cities → {OUT.name}")
     return 0
 

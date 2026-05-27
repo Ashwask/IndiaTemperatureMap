@@ -173,7 +173,7 @@ def main() -> int:
         "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "stations": hits,
         "probed_misses": len(misses),
-    }, indent=2))
+    }, separators=(",", ":")))
     print(f"\nhits: {len(hits)}/{len(PROBES)}", file=sys.stderr)
     print(f"saved to {OUT.name}", file=sys.stderr)
     if hits:

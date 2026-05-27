@@ -6,6 +6,10 @@
 <title>India Temperature Map</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://api.open-meteo.com" crossorigin>
+<link rel="preconnect" href="https://api.met.no" crossorigin>
+<link rel="preconnect" href="https://www.7timer.info" crossorigin>
+<link rel="dns-prefetch" href="https://basemaps.cartocdn.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
@@ -561,32 +565,52 @@ function fetchLiveCitiesFast() {
   });
 }
 
-// Slow path: 78 per-city fetches. Fires after initial render; updates popups in place.
-function enrichSecondaryModels(cities, markersByName, snapRef) {
-  const metPromises = cities.map((c, i) =>
-    fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat}&lon=${c.lon}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(j => j?.properties?.timeseries?.[0]?.data?.instant?.details?.air_temperature ?? null)
-      .catch(() => null)
-      .then(v => { c.models["MET Norway"] = v; recomputeSpread(c); refreshPopup(c, markersByName); })
-  );
-  const sevenPromises = cities.map(c =>
-    fetch(`https://www.7timer.info/bin/api.pl?lon=${c.lon}&lat=${c.lat}&product=civil&output=json`)
-      .then(r => r.ok ? r.json() : null)
-      .then(j => j?.dataseries?.[0]?.temp2m ?? null)
-      .catch(() => null)
-      .then(v => { c.models["7Timer"] = v; recomputeSpread(c); refreshPopup(c, markersByName); })
-  );
-  Promise.all([...metPromises, ...sevenPromises]).then(() => {
-    snapRef.model_counts = {
-      "Open-Meteo": cities.filter(c => c.models["Open-Meteo"] != null).length,
-      "MET Norway": cities.filter(c => c.models["MET Norway"] != null).length,
-      "7Timer": cities.filter(c => c.models["7Timer"] != null).length,
-    };
-    const mc = snapRef.model_counts;
-    const pill = document.getElementById("live-pill");
-    if (pill) pill.title = `Models: Open-Meteo ${mc["Open-Meteo"]}/${cities.length} · MET Norway ${mc["MET Norway"]}/${cities.length} · 7Timer ${mc["7Timer"]}/${cities.length}`;
+// Concurrency-limited fetcher (avoids hammering 78 parallel sockets).
+async function runWithConcurrency(tasks, limit) {
+  const results = [];
+  let i = 0;
+  const workers = Array(Math.min(limit, tasks.length)).fill(0).map(async () => {
+    while (i < tasks.length) {
+      const idx = i++;
+      results[idx] = await tasks[idx]();
+    }
   });
+  await Promise.all(workers);
+  return results;
+}
+
+// Slow path: per-city fetches. Fires after initial render. Updates popup ONLY if open.
+async function enrichSecondaryModels(cities, markersByName, snapRef) {
+  const tasks = [];
+  cities.forEach(c => {
+    tasks.push(async () => {
+      try {
+        const r = await fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat}&lon=${c.lon}`);
+        const j = await r.json();
+        c.models["MET Norway"] = j?.properties?.timeseries?.[0]?.data?.instant?.details?.air_temperature ?? null;
+      } catch { c.models["MET Norway"] = null; }
+      recomputeSpread(c); refreshPopupIfOpen(c, markersByName);
+    });
+    tasks.push(async () => {
+      try {
+        const r = await fetch(`https://www.7timer.info/bin/api.pl?lon=${c.lon}&lat=${c.lat}&product=civil&output=json`);
+        const j = await r.json();
+        c.models["7Timer"] = j?.dataseries?.[0]?.temp2m ?? null;
+      } catch { c.models["7Timer"] = null; }
+      recomputeSpread(c); refreshPopupIfOpen(c, markersByName);
+    });
+  });
+
+  await runWithConcurrency(tasks, 8);
+
+  snapRef.model_counts = {
+    "Open-Meteo": cities.filter(c => c.models["Open-Meteo"] != null).length,
+    "MET Norway": cities.filter(c => c.models["MET Norway"] != null).length,
+    "7Timer": cities.filter(c => c.models["7Timer"] != null).length,
+  };
+  const mc = snapRef.model_counts;
+  const pill = document.getElementById("live-pill");
+  if (pill) pill.title = `Models: Open-Meteo ${mc["Open-Meteo"]}/${cities.length} · MET Norway ${mc["MET Norway"]}/${cities.length} · 7Timer ${mc["7Timer"]}/${cities.length}`;
 }
 
 function recomputeSpread(c) {
@@ -594,22 +618,26 @@ function recomputeSpread(c) {
   c.model_spread = vals.length > 1 ? Math.max(...vals) - Math.min(...vals) : null;
 }
 
-function refreshPopup(c, markersByName) {
-  const m = markersByName[c.name];
-  if (!m) return;
+function buildPopupHTML(c) {
   const modelRows = Object.entries(c.models).filter(([_, v]) => v != null).map(([k, v]) =>
     `<div class="prow"><span>${k}</span><b>${(+v).toFixed(1)} °C</b></div>`
   ).join("");
   const spreadRow = c.model_spread != null
     ? `<div class="prow" style="margin-top:4px;border-top:1px solid var(--border-light);padding-top:4px"><span>Spread</span><b style="color:${c.model_spread > 3 ? '#C00000' : 'var(--text-main)'}">${c.model_spread.toFixed(1)} °C</b></div>`
     : "";
-  m.setPopupContent(`
-    <div class="pname">${c.name}<span class="city"> · ${c.state}</span></div>
-    ${modelRows}${spreadRow}
+  return `<div class="pname">${c.name}<span class="city"> · ${c.state}</span></div>
+    ${modelRows || `<div class="prow"><span>Temperature</span><b>${c.temperature_2m_c.toFixed(1)} °C</b></div>`}${spreadRow}
     ${c.apparent_temperature_c != null ? `<div class="prow"><span>Feels like</span><b>${c.apparent_temperature_c.toFixed(1)} °C</b></div>` : ""}
     ${c.relative_humidity_pct != null ? `<div class="prow"><span>Humidity</span><b>${c.relative_humidity_pct}%</b></div>` : ""}
-    ${c.wind_speed_10m_kmh != null ? `<div class="prow"><span>Wind</span><b>${c.wind_speed_10m_kmh.toFixed(1)} km/h</b></div>` : ""}
-  `);
+    ${c.wind_speed_10m_kmh != null ? `<div class="prow"><span>Wind</span><b>${c.wind_speed_10m_kmh.toFixed(1)} km/h</b></div>` : ""}`;
+}
+
+// Only re-render popup content if the popup is currently visible.
+function refreshPopupIfOpen(c, markersByName) {
+  const m = markersByName[c.name];
+  if (!m) return;
+  c._popupHTML = buildPopupHTML(c);  // cache for next open
+  if (m.isPopupOpen()) m.setPopupContent(c._popupHTML);
 }
 
 const markersByName = {};
