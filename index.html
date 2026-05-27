@@ -812,8 +812,15 @@ Promise.all([
   const layerControl = L.control.layers(
     {"Light (Carto Positron)": positron, "OpenStreetMap": osm},
     overlays,
-    { collapsed: false, position: "topright" }
+    { collapsed: true, position: "topright" }
   ).addTo(map);
+
+  // Auto-collapse after the user toggles any base/overlay layer.
+  function collapseLayerControl() {
+    const el = layerControl && layerControl._container;
+    if (el) el.classList.remove("leaflet-control-layers-expanded");
+  }
+  map.on("baselayerchange overlayadd overlayremove", collapseLayerControl);
 
   loadStationLayer("stations_openaq.json", openaqLayer, "OpenAQ", "openaq-status")
     .then(label => { if (label) layerControl.addOverlay(openaqLayer, label); });
