@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>India Heat · Open Temperature Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --primary: #008080;
+    --primary-dark: #006666;
+    --primary-soft: #00808014;
+    --secondary: #2E8B57;
+    --accent: #00B050;
+
+    --bg-canvas: #F6F8FA;
+    --bg-card: #FFFFFF;
+    --bg-sidebar: #FFFFFF;
+    --bg-nav-active: #F0FDFA;
+
+    --border-light: #E2E8F0;
+    --text-main: #111827;
+    --text-body: #374151;
+    --text-muted: #6B7280;
+
+    /* Temperature scale — adapted from OAQ's AQI bands */
+    --t-cool: #00B050;
+    --t-mild: #92D050;
+    --t-warm: #FFD60A;
+    --t-hot: #FF9900;
+    --t-extreme: #FF0000;
+    --t-severe: #C00000;
+
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, .05);
+    --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, .08), 0 2px 4px -1px rgba(0, 0, 0, .04);
+    --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+    --sidebar-width: 280px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-body);
+    background: var(--bg-canvas);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ===== Top nav ===== */
+  .topbar {
+    height: 56px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    color: var(--text-main);
+    font-size: 15px;
+  }
+  .brand .dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    box-shadow: 0 0 0 3px var(--primary-soft);
+  }
+  .brand .sub {
+    color: var(--text-muted); font-weight: 400; font-size: 13px; margin-left: 4px;
+  }
+  .nav {
+    display: flex;
+    gap: 4px;
+    margin-left: 32px;
+    flex: 1;
+  }
+  .nav a {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-body);
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .nav a:hover { background: var(--bg-canvas); text-decoration: none; }
+  .nav a.active {
+    background: var(--bg-nav-active);
+    color: var(--primary-dark);
+  }
+  .topbar .meta {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .topbar .meta b { color: var(--text-main); font-weight: 600; }
+
+  /* ===== Views ===== */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ===== Map view ===== */
+  #map-view.active {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    height: calc(100vh - 56px);
+  }
+  aside {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-light);
+    overflow-y: auto;
+    padding: 18px;
+  }
+  #map { background: #E5ECF1; height: 100%; width: 100%; position: relative; }
+
+  /* ===== Trends view ===== */
+  #trends-view {
+    padding: 24px 32px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card .label {
+    color: var(--text-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+  .card .value {
+    color: var(--text-main);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .card .sub {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+  }
+  .panel h3 {
+    margin: 0 0 4px;
+    color: var(--text-main);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .panel .panel-sub {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+
+  /* ===== Sidebar elements ===== */
+  aside h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 18px 0 8px;
+    font-weight: 600;
+  }
+  aside h2:first-child { margin-top: 0; }
+  .stat-row { display: flex; gap: 10px; margin-bottom: 6px; }
+  .stat-row .mini {
+    flex: 1;
+    padding: 10px 12px;
+    background: var(--bg-canvas);
+    border-radius: 8px;
+  }
+  .stat-row .mini .v { font-size: 18px; font-weight: 700; color: var(--text-main); line-height: 1.1; }
+  .stat-row .mini .l { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+  .legend-grad {
+    display: flex;
+    height: 12px;
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 6px 0 4px;
+  }
+  .legend-grad div { flex: 1; }
+  .legend-labels {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-muted);
+    font-size: 10px;
+  }
+  .legend-row {
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    margin: 3px 0;
+    color: var(--text-body);
+  }
+  .legend-row .sw { height: 12px; border-radius: 3px; }
+  .legend-row .ct { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+  .ref {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+  .ref strong { color: var(--text-body); font-weight: 600; }
+  .ref code {
+    background: var(--bg-canvas);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: ui-monospace, Menlo, monospace;
+    color: var(--text-body);
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--bg-canvas);
+    color: var(--text-muted);
+    font-size: 10px;
+    margin-left: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .badge.ok { background: #D1FAE5; color: #065F46; }
+  .badge.key { background: #EDE9FE; color: #5B21B6; }
+  .badge.blocked { background: #FEE2E2; color: #991B1B; }
+  .badge.empty { background: var(--bg-canvas); color: var(--text-muted); }
+  .badge.tile { background: #DBEAFE; color: #1E40AF; }
+  .badge.pdf { background: #FEF3C7; color: #92400E; }
+
+  /* ===== Leaflet overrides ===== */
+  .leaflet-control-layers {
+    border: 1px solid var(--border-light) !important;
+    box-shadow: var(--shadow-card) !important;
+    background: var(--bg-card) !important;
+    border-radius: 8px !important;
+    font-family: var(--font-sans) !important;
+  }
+  .leaflet-control-layers-expanded { padding: 12px 14px !important; font-size: 12px !important; }
+  .leaflet-control-layers label { color: var(--text-body) !important; padding: 2px 0 !important; }
+  .leaflet-control-layers-separator { border-top: 1px solid var(--border-light) !important; margin: 6px 0 !important; }
+  .leaflet-bar a {
+    background: var(--bg-card) !important;
+    color: var(--text-body) !important;
+    border-bottom: 1px solid var(--border-light) !important;
+  }
+  .leaflet-bar a:hover { background: var(--bg-canvas) !important; }
+  .leaflet-control-attribution {
+    background: rgba(255, 255, 255, 0.9) !important;
+    color: var(--text-muted) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 11px !important;
+  }
+  .leaflet-control-attribution a { color: var(--primary) !important; }
+  .leaflet-popup-content-wrapper {
+    border-radius: 8px !important;
+    box-shadow: var(--shadow-card) !important;
+    background: var(--bg-card) !important;
+  }
+  .leaflet-popup-content { margin: 12px 16px; font-family: var(--font-sans); font-size: 12px; color: var(--text-body); }
+  .leaflet-popup-content .pname { font-weight: 700; font-size: 14px; margin-bottom: 6px; color: var(--text-main); }
+  .leaflet-popup-content .pname .city { font-weight: 400; color: var(--text-muted); }
+  .leaflet-popup-content .prow { display: flex; justify-content: space-between; gap: 14px; padding: 2px 0; }
+  .leaflet-popup-content .prow span { color: var(--text-muted); }
+  .leaflet-popup-content .prow b { color: var(--text-main); font-weight: 600; }
+  .leaflet-popup-tip { background: var(--bg-card) !important; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    India Heat<span class="sub">· open temperature platform</span>
+  </div>
+  <nav class="nav">
+    <a class="active" data-view="map-view">Live Map</a>
+    <a data-view="trends-view">Trends</a>
+    <a data-view="sources-view">Sources</a>
+    <a data-view="about-view">About</a>
+  </nav>
+  <div class="meta">
+    <b id="topbar-stations">—</b> stations · <b id="topbar-time">—</b>
+  </div>
+</div>
+
+<!-- ============ MAP VIEW ============ -->
+<section id="map-view" class="view active">
+  <aside>
+    <h2>Snapshot</h2>
+    <div class="stat-row">
+      <div class="mini"><div class="v" id="stat-min">—</div><div class="l">Min</div></div>
+      <div class="mini"><div class="v" id="stat-mean">—</div><div class="l">Mean</div></div>
+      <div class="mini"><div class="v" id="stat-max">—</div><div class="l">Max</div></div>
+    </div>
+
+    <h2>Temperature scale (°C)</h2>
+    <div class="legend-grad">
+      <div style="background: var(--t-cool)"></div>
+      <div style="background: var(--t-mild)"></div>
+      <div style="background: var(--t-warm)"></div>
+      <div style="background: var(--t-hot)"></div>
+      <div style="background: var(--t-extreme)"></div>
+      <div style="background: var(--t-severe)"></div>
+    </div>
+    <div class="legend-labels"><span>&lt;25</span><span>25–30</span><span>30–35</span><span>35–40</span><span>40–43</span><span>43+</span></div>
+
+    <h2>Layers</h2>
+    <div class="ref">Toggle in top-right of the map. Defaults show the city snapshot.</div>
+
+    <h2>Hyperlocal ground stations</h2>
+    <div class="ref" id="openaq-status">
+      <strong>OpenAQ (India)</strong> <span class="badge ok">loaded</span><br>
+      <em>Status: not yet fetched.</em>
+    </div>
+    <div class="ref" id="cpcb-status">
+      <strong>CPCB Air Quality · data.gov.in</strong> <span class="badge key">loading</span><br>
+      <em>Status: fetching with shared demo key (rate-limited; may take ~90s).</em><br>
+      <small style="color:var(--text-muted)">Note: dataset is AQ pollutants (PM2.5, NO2, etc.), NOT temperature. Shown as a separate layer.</small>
+    </div>
+    <div class="ref">
+      <strong>IMD AWS network (~700 stations)</strong>
+      <span class="badge blocked">key gated</span><br>
+      API exists at <code>api.imd.gov.in/api/v1</code> but every endpoint returns 401. Request access from <code>aws.imd@gov.in</code>.
+    </div>
+    <div class="ref">
+      <strong>Sensor.Community India</strong>
+      <span class="badge empty">empty</span><br>
+      0 temperature sensors confirmed.
+    </div>
+
+  </aside>
+  <div id="map"></div>
+</section>
+
+<!-- ============ TRENDS VIEW ============ -->
+<section id="trends-view" class="view">
+  <h1 style="margin: 0 0 4px; color: var(--text-main); font-size: 22px;">India Temperature Trends</h1>
+  <p style="margin: 0 0 24px; color: var(--text-muted);">Annual averages and current-day distribution.</p>
+
+  <div class="cards" id="trend-cards"></div>
+
+  <div class="panel">
+    <h3>All-India annual mean · 1980–2025</h3>
+    <div class="panel-sub">Average across Delhi · Jaipur · Mumbai · Kolkata · Guwahati · Nagpur · Bangalore · Chennai. Source: Open-Meteo / ERA5 reanalysis.</div>
+    <div id="trend-chart-big"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Today's distribution across 39 cities</h3>
+    <div class="panel-sub">Current temperature by city, sorted hottest → coolest. Source: Open-Meteo current.</div>
+    <div id="dist-chart"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Temperature-band distribution</h3>
+    <div class="panel-sub">How many of today's stations fall into each OAQ-style band.</div>
+    <div id="band-chart"></div>
+  </div>
+</section>
+
+<!-- ============ SOURCES VIEW ============ -->
+<section id="sources-view" class="view">
+  <div style="padding: 24px 32px; max-width: 1100px; margin: 0 auto;">
+    <h1 style="margin: 0 0 6px; color: var(--text-main); font-size: 22px;">Multi-source temperature comparison</h1>
+    <p style="margin: 0 0 20px; color: var(--text-muted);">Side-by-side readings from 9 data providers for sample Bengaluru, Mumbai, Pune and Delhi points. Sources with grey rows need a free API key — set the env var listed and re-run <code>python3 india_temp_pull.py</code>.</p>
+
+    <div class="panel">
+      <h3>Source status</h3>
+      <div class="panel-sub">Which of the 9 providers returned data on the last run.</div>
+      <table style="width:100%; border-collapse: collapse; font-size: 13px;" id="source-status-table">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border-light); text-align: left;">
+            <th style="padding: 8px 4px; color: var(--text-muted); font-weight: 500;">Source</th>
+            <th style="padding: 8px 4px; color: var(--text-muted); font-weight: 500;">Status</th>
+            <th style="padding: 8px 4px; color: var(--text-muted); font-weight: 500;">Key var</th>
+            <th style="padding: 8px 4px; color: var(--text-muted); font-weight: 500;">Sign-up</th>
+            <th style="padding: 8px 4px; color: var(--text-muted); font-weight: 500;">Notes</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>Per-location comparison</h3>
+      <div class="panel-sub">Each row is one of the 7 sample localities. Cells show °C from each source (— = no data, ✕ = key missing or error).</div>
+      <div style="overflow-x: auto;">
+        <table style="width:100%; border-collapse: collapse; font-size: 13px; min-width: 800px;" id="comparison-table">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ABOUT VIEW ============ -->
+<section id="about-view" class="view">
+  <div style="padding: 24px 32px; max-width: 860px; margin: 0 auto;">
+    <h1 style="margin: 0 0 6px; color: var(--text-main); font-size: 22px;">About this project</h1>
+    <p style="margin: 0 0 24px; color: var(--text-muted);">An open India temperature platform built in the OAQ tradition — same UI patterns, applied to temperature instead of air quality.</p>
+
+    <div class="panel">
+      <h3>What's in the map</h3>
+      <ul style="margin: 8px 0 0; padding-left: 18px; line-height: 1.7;">
+        <li><strong>39 city points</strong> — current temperature from Open-Meteo (state capitals + metros)</li>
+        <li><strong>570 OpenAQ stations</strong> — India ground sensors, 509 from CPCB regulatory network + 34 AirGradient + others</li>
+        <li><strong>4,441 grid cells</strong> at 0.25° clipped to India landmass (geometry only)</li>
+        <li><strong>MODIS LST</strong> — NASA daily Land Surface Temperature, ~1 km native</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h3>Data sources</h3>
+      <p><strong>Open-Meteo</strong> (open-meteo.com) — free, no key, AGPLv3 server, CC BY 4.0 data. Provides current, forecast, and historical archive (ERA5).</p>
+      <p><strong>OpenAQ v3</strong> (openaq.org) — aggregates CPCB + community sensors. Requires free API key.</p>
+      <p><strong>NASA EOSDIS GIBS</strong> (gibs.earthdata.nasa.gov) — MODIS Terra/Aqua Land Surface Temperature. WMTS tiles, free.</p>
+      <p><strong>Natural Earth 50m</strong> — country polygon used to clip the grid to India landmass.</p>
+    </div>
+
+    <div class="panel">
+      <h3>What's gated</h3>
+      <p><strong>IMD public API</strong> — <code>api.imd.gov.in/api/v1/aws_data</code>, <code>/current_wx</code>, <code>/districtrainfall</code>, <code>/cityforecast</code> exist and are documented, but all endpoints respond <code>401 API key missing</code>. No public signup; access by formal request to <code>aws.imd@gov.in</code>.</p>
+      <p><strong>data.gov.in CPCB realtime</strong> — endpoint reachable but the dataset itself carries only air-quality pollutants (PM2.5, NO2, etc.), no temperature column.</p>
+      <p><strong>WRI India / CSTEP</strong> — heat-vulnerability and climate-risk products are published as PDFs and pre-rendered choropleths, not as tile services.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Files in this directory</h3>
+      <p style="font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.9;">
+        <code>fetch.py</code> · <code>grid.py</code> · <code>fetch_openaq.py</code> · <code>fetch_datagovin.py</code> · <code>build_india_trend.py</code><br>
+        <code>cities.json</code> · <code>india_grid.json</code> · <code>india_polygon.json</code><br>
+        <code>snapshot_cities.json</code> · <code>stations_openaq.json</code> · <code>india_temp_trend.json</code>
+      </p>
+    </div>
+  </div>
+</section>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ===== view router =====
+document.querySelectorAll(".nav a").forEach(a => {
+  a.addEventListener("click", () => {
+    document.querySelectorAll(".nav a").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(x => x.classList.remove("active"));
+    a.classList.add("active");
+    document.getElementById(a.dataset.view).classList.add("active");
+    if (a.dataset.view === "map-view") setTimeout(() => map.invalidateSize(), 0);
+  });
+});
+
+// ===== OAQ-style discrete temperature bands =====
+const BANDS = [
+  { max: 25,  color: "#00B050", label: "Cool (<25 °C)" },
+  { max: 30,  color: "#92D050", label: "Mild (25–30 °C)" },
+  { max: 35,  color: "#FFD60A", label: "Warm (30–35 °C)" },
+  { max: 40,  color: "#FF9900", label: "Hot (35–40 °C)" },
+  { max: 43,  color: "#FF0000", label: "Extreme (40–43 °C)" },
+  { max: 999, color: "#C00000", label: "Severe (43+ °C)" },
+];
+function bandFor(t) {
+  if (t == null) return null;
+  return BANDS.find(b => t < b.max) || BANDS[BANDS.length-1];
+}
+function colorFor(t) {
+  const b = bandFor(t);
+  return b ? b.color : "#9CA3AF";
+}
+
+// ===== map =====
+const MAP_BOUNDS = [[6.0, 67.0], [37.5, 98.0]];
+const map = L.map("map", {
+  center: [22.5, 80],
+  zoom: 5,
+  minZoom: 4,
+  maxZoom: 10,
+  preferCanvas: true,
+}).fitBounds(MAP_BOUNDS);
+
+const positron = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+  attribution: '&copy; OpenStreetMap, &copy; CARTO',
+  subdomains: "abcd", maxZoom: 19,
+}).addTo(map);
+const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "&copy; OpenStreetMap", maxZoom: 19,
+});
+
+const lstDate = "2026-05-25";
+const lstAqua = L.tileLayer(
+  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Aqua_Land_Surface_Temp_Day/default/${lstDate}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`,
+  { attribution: "NASA EOSDIS GIBS", opacity: 0.55, maxZoom: 7, tileSize: 256, bounds: MAP_BOUNDS }
+);
+const lstTerra = L.tileLayer(
+  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Land_Surface_Temp_Day/default/${lstDate}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`,
+  { attribution: "NASA EOSDIS GIBS", opacity: 0.55, maxZoom: 7, tileSize: 256, bounds: MAP_BOUNDS }
+);
+
+const cityLayer = L.layerGroup().addTo(map);
+const gridLayer = L.layerGroup();
+const openaqLayer = L.layerGroup();
+const cpcbAqLayer = L.layerGroup();
+const multiSourceLayer = L.layerGroup();
+const weatherUnionLayer = L.layerGroup().addTo(map);
+let wriLayer = null;
+
+// ===== load city snapshot =====
+Promise.all([
+  fetch("snapshot_cities.json").then(r => r.json()),
+  fetch("india_grid_weather.json").then(r => r.ok ? r.json() : null).catch(() => null),
+  fetch("india_grid.json").then(r => r.json()),
+  fetch("india_temp_trend.json").then(r => r.json()),
+]).then(([snap, gridWeather, grid, trend]) => {
+  const cities = snap.cities;
+  const temps = cities.map(c => c.temperature_2m_c);
+  const tMin = Math.min(...temps), tMax = Math.max(...temps);
+  const tMean = temps.reduce((a, b) => a + b, 0) / temps.length;
+
+  document.getElementById("stat-min").textContent = tMin.toFixed(1) + "°";
+  document.getElementById("stat-mean").textContent = tMean.toFixed(1) + "°";
+  document.getElementById("stat-max").textContent = tMax.toFixed(1) + "°";
+  document.getElementById("topbar-stations").textContent = cities.length;
+  document.getElementById("topbar-time").textContent = new Date(snap.collected_at).toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }) + " IST";
+
+  cities.forEach(c => {
+    const marker = L.circleMarker([c.lat, c.lon], {
+      radius: 9, fillColor: colorFor(c.temperature_2m_c),
+      color: "#FFFFFF", weight: 2, fillOpacity: 1,
+    }).bindPopup(`
+      <div class="pname">${c.name}<span class="city"> · ${c.state}</span></div>
+      <div class="prow"><span>Temperature</span><b>${c.temperature_2m_c.toFixed(1)} °C</b></div>
+      <div class="prow"><span>Feels like</span><b>${c.apparent_temperature_c.toFixed(1)} °C</b></div>
+      <div class="prow"><span>Humidity</span><b>${c.relative_humidity_pct}%</b></div>
+      <div class="prow"><span>Wind</span><b>${c.wind_speed_10m_kmh.toFixed(1)} km/h</b></div>
+    `);
+    cityLayer.addLayer(marker);
+  });
+
+  // If the 4,441-cell weather payload is available, render the grid as colored heat
+  // cells (0.25° rectangles, OAQ-style band colors). Otherwise show geometry dots.
+  const gridResolution = 0.25;
+  const half = gridResolution / 2;
+  if (Array.isArray(gridWeather) && gridWeather.length) {
+    gridWeather.forEach(g => {
+      if (g.temperature_2m == null) return;
+      const bounds = [[g.lat - half, g.lon - half], [g.lat + half, g.lon + half]];
+      gridLayer.addLayer(L.rectangle(bounds, {
+        color: colorFor(g.temperature_2m),
+        fillColor: colorFor(g.temperature_2m),
+        weight: 0,
+        fillOpacity: 0.55,
+      }).bindPopup(`
+        <div class="pname">Grid cell</div>
+        <div class="prow"><span>Coords</span><b>${g.lat.toFixed(2)}, ${g.lon.toFixed(2)}</b></div>
+        <div class="prow"><span>Temperature</span><b>${(+g.temperature_2m).toFixed(1)} °C</b></div>
+        ${g.relative_humidity_2m != null ? `<div class="prow"><span>Humidity</span><b>${g.relative_humidity_2m}%</b></div>` : ""}
+        ${g.wind_speed_10m != null ? `<div class="prow"><span>Wind</span><b>${g.wind_speed_10m} km/h</b></div>` : ""}
+        <div class="prow"><span>Source</span><b>Open-Meteo, 0.25° lattice</b></div>
+      `));
+    });
+  } else {
+    grid.forEach(g => {
+      gridLayer.addLayer(L.circleMarker([g.lat, g.lon], {
+        radius: 1.2, fillColor: "#008080", color: "#008080", weight: 0, fillOpacity: 0.35,
+      }));
+    });
+  }
+
+  const overlays = {
+    "Cities (Open-Meteo)": cityLayer,
+  };
+  overlays[gridWeather && gridWeather.length
+    ? `0.25° heat grid (${gridWeather.filter(g => g.temperature_2m != null).length} cells)`
+    : "Grid cells (0.25°, geometry only)"] = gridLayer;
+  overlays[`MODIS Aqua LST · ${lstDate}`] = lstAqua;
+  overlays[`MODIS Terra LST · ${lstDate}`] = lstTerra;
+
+  const layerControl = L.control.layers(
+    {"Light (Carto Positron)": positron, "OpenStreetMap": osm},
+    overlays,
+    { collapsed: false, position: "topright" }
+  ).addTo(map);
+
+  loadStationLayer("stations_openaq.json", openaqLayer, "OpenAQ", "openaq-status")
+    .then(label => { if (label) layerControl.addOverlay(openaqLayer, label); });
+  loadCPCBLayer(cpcbAqLayer).then(label => { if (label) layerControl.addOverlay(cpcbAqLayer, label); });
+  loadMultiSourceLayer(multiSourceLayer).then(label => { if (label) layerControl.addOverlay(multiSourceLayer, label); });
+  loadWeatherUnionLayer(weatherUnionLayer).then(label => { if (label) layerControl.addOverlay(weatherUnionLayer, label); });
+
+  renderTrendCards(cities, trend);
+  renderTrendChart(trend);
+  renderCityDistribution(cities);
+  renderBandDistribution(cities);
+}).catch(e => {
+  console.error("data load failed:", e);
+  const note = document.createElement("div");
+  note.style.cssText = "position:absolute;top:12px;left:12px;z-index:1000;background:#FEE2E2;color:#991B1B;padding:10px 14px;border-radius:6px;box-shadow:var(--shadow-card);font-size:12px;max-width:340px;";
+  note.innerHTML = `Data load failed: ${e}. The map base layer is still visible; reload after a moment.`;
+  document.getElementById("map").appendChild(note);
+});
+
+// ===== Weather Union hyperlocal ground sensors =====
+function loadWeatherUnionLayer(layer) {
+  return fetch("stations_weatherunion.json").then(r => {
+    if (!r.ok) throw new Error("not present");
+    return r.json();
+  }).then(payload => {
+    const stations = payload.stations || [];
+    stations.forEach(s => {
+      const m = L.circleMarker([s.lat, s.lon], {
+        radius: 8, fillColor: colorFor(s.temperature_c),
+        color: "#008080", weight: 2.5, fillOpacity: 1,
+      }).bindPopup(`
+        <div class="pname">${s.name}<span class="city"> · Zomato ground sensor</span></div>
+        <div class="prow"><span>Temperature</span><b>${(+s.temperature_c).toFixed(1)} °C</b></div>
+        ${s.humidity_pct != null ? `<div class="prow"><span>Humidity</span><b>${s.humidity_pct}%</b></div>` : ""}
+        ${s.wind_speed_ms != null ? `<div class="prow"><span>Wind</span><b>${(s.wind_speed_ms*3.6).toFixed(1)} km/h</b></div>` : ""}
+        ${s.aqi_pm25 != null ? `<div class="prow"><span>PM2.5 AQI</span><b>${s.aqi_pm25}</b></div>` : ""}
+        <div class="prow"><span>Source</span><b>Weather Union</b></div>
+      `);
+      layer.addLayer(m);
+    });
+    return `Weather Union ground sensors (${stations.length})`;
+  }).catch(() => null);
+}
+
+// ===== Multi-source readings (india_temp_pull.py output) =====
+const SOURCE_META = [
+  { name: "Open-Meteo",         env: "—",                     signup: "open-meteo.com",      note: "Model blend, ~11km grid (ICON/IFS/GFS), no key" },
+  { name: "MET Norway",         env: "—",                     signup: "api.met.no",          note: "ECMWF-backed, ~10km global, polite UA only" },
+  { name: "7Timer",             env: "—",                     signup: "7timer.info",         note: "GFS-based, 3-hourly forecast, no key" },
+  { name: "METAR (Iowa State)", env: "—",                     signup: "mesonet.agron.iastate.edu", note: "Real airport instrument data, 16 Indian ICAOs" },
+  { name: "NASA POWER",         env: "—",                     signup: "power.larc.nasa.gov", note: "Reanalysis hourly, ~24h lag" },
+  { name: "IMD",                env: "—",                     signup: "api.imd.gov.in",      note: "City forecast (IP-gated, formal request only)" },
+  { name: "Weather Union",      env: "WEATHER_UNION_KEY",     signup: "weatherunion.com",    note: "Zomato — India hyperlocal ground sensors" },
+  { name: "OpenWeatherMap",     env: "OPENWEATHER_API_KEY",   signup: "openweathermap.org",  note: "Model + stations blend" },
+  { name: "Visual Crossing",    env: "VISUAL_CROSSING_KEY",   signup: "visualcrossing.com",  note: "Multi-source blended" },
+  { name: "Tomorrow.io",        env: "TOMORROW_IO_KEY",       signup: "tomorrow.io",         note: "Proprietary model" },
+  { name: "Ambee",              env: "AMBEE_KEY",             signup: "ambeedata.com",       note: "India-based provider" },
+  { name: "WeatherAPI",         env: "WEATHERAPI_KEY",        signup: "weatherapi.com",      note: "Multi-source blended" },
+];
+
+function loadMultiSourceLayer(layer) {
+  return fetch("india_temp_readings.json").then(r => {
+    if (!r.ok) throw new Error("not present");
+    return r.json();
+  }).then(rows => {
+    // Group by location
+    const byLoc = {};
+    rows.forEach(r => {
+      const key = r.location;
+      if (!byLoc[key]) byLoc[key] = { name: key, lat: r.lat, lon: r.lon, readings: [] };
+      byLoc[key].readings.push(r);
+    });
+
+    Object.values(byLoc).forEach(loc => {
+      const ok = loc.readings.filter(r => r.error == null && r.temperature_c != null);
+      const primary = ok.find(r => r.source === "Open-Meteo") || ok[0];
+      const color = primary ? colorFor(primary.temperature_c) : "#9CA3AF";
+      const m = L.circleMarker([loc.lat, loc.lon], {
+        radius: 7, fillColor: color, color: "#008080", weight: 2, fillOpacity: 0.95,
+      });
+      const rows_html = loc.readings.map(r => {
+        if (r.error) return `<div class="prow"><span style="color:var(--text-muted)">${r.source}</span><b style="color:#9CA3AF">— (${(r.error || "").slice(0, 30)})</b></div>`;
+        if (r.temperature_c == null) return `<div class="prow"><span style="color:var(--text-muted)">${r.source}</span><b style="color:#9CA3AF">no data</b></div>`;
+        return `<div class="prow"><span>${r.source}</span><b>${r.temperature_c.toFixed(1)} °C</b></div>`;
+      }).join("");
+      m.bindPopup(`
+        <div class="pname">${loc.name}</div>
+        <div style="color: var(--text-muted); font-size: 11px; margin: -2px 0 6px;">${loc.lat.toFixed(4)}, ${loc.lon.toFixed(4)} · ${ok.length}/${loc.readings.length} sources</div>
+        ${rows_html}
+      `);
+      layer.addLayer(m);
+    });
+
+    renderSourceStatus(rows);
+    renderComparisonTable(Object.values(byLoc));
+
+    return `Multi-source sample (${Object.keys(byLoc).length} points)`;
+  }).catch(() => null);
+}
+
+function renderSourceStatus(rows) {
+  const tbody = document.querySelector("#source-status-table tbody");
+  if (!tbody) return;
+  const bySource = {};
+  rows.forEach(r => {
+    bySource[r.source] = bySource[r.source] || { ok: 0, err: 0, sample_err: null };
+    if (r.error) { bySource[r.source].err++; bySource[r.source].sample_err = r.error; }
+    else bySource[r.source].ok++;
+  });
+  tbody.innerHTML = SOURCE_META.map(s => {
+    const stat = bySource[s.name] || { ok: 0, err: 0, sample_err: null };
+    const isOk = stat.ok > 0;
+    const badge = isOk
+      ? `<span class="badge ok">${stat.ok} ok</span>`
+      : (s.env !== "—" ? `<span class="badge key">key needed</span>` : `<span class="badge blocked">${(stat.sample_err || "").slice(0, 40)}</span>`);
+    return `<tr style="border-bottom: 1px solid var(--border-light);">
+      <td style="padding: 8px 4px; font-weight: 600; color: var(--text-main);">${s.name}</td>
+      <td style="padding: 8px 4px;">${badge}</td>
+      <td style="padding: 8px 4px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--text-body);">${s.env}</td>
+      <td style="padding: 8px 4px;"><a href="https://${s.signup}" target="_blank" rel="noopener">${s.signup}</a></td>
+      <td style="padding: 8px 4px; color: var(--text-muted); font-size: 12px;">${s.note}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderComparisonTable(locs) {
+  const head = document.querySelector("#comparison-table thead");
+  const body = document.querySelector("#comparison-table tbody");
+  if (!head || !body) return;
+  const sources = SOURCE_META.map(s => s.name);
+  head.innerHTML = `<tr style="border-bottom: 1px solid var(--border-light); text-align: left;">
+    <th style="padding: 8px 4px; color: var(--text-muted); font-weight: 500; min-width: 220px;">Location</th>
+    ${sources.map(s => `<th style="padding: 8px 4px; color: var(--text-muted); font-weight: 500; text-align: right; min-width: 70px;">${s}</th>`).join("")}
+  </tr>`;
+  body.innerHTML = locs.map(loc => {
+    const cells = sources.map(src => {
+      const r = loc.readings.find(x => x.source === src);
+      if (!r) return `<td style="padding: 8px 4px; text-align: right; color: var(--text-muted);">—</td>`;
+      if (r.error) return `<td style="padding: 8px 4px; text-align: right; color: #9CA3AF;" title="${r.error.replace(/"/g, "&quot;")}">✕</td>`;
+      if (r.temperature_c == null) return `<td style="padding: 8px 4px; text-align: right; color: var(--text-muted);">—</td>`;
+      return `<td style="padding: 8px 4px; text-align: right; font-variant-numeric: tabular-nums; color: ${colorFor(r.temperature_c)}; font-weight: 600;">${r.temperature_c.toFixed(1)}°</td>`;
+    }).join("");
+    return `<tr style="border-bottom: 1px solid var(--border-light);">
+      <td style="padding: 8px 4px; color: var(--text-main);">${loc.name}</td>
+      ${cells}
+    </tr>`;
+  }).join("");
+}
+
+// ===== CPCB Air Quality (PM2.5) layer =====
+const PM25_BANDS = [
+  { max: 30,  color: "#00B050", label: "Good (0-30)" },
+  { max: 60,  color: "#92D050", label: "Satisfactory (30-60)" },
+  { max: 90,  color: "#FFD60A", label: "Moderate (60-90)" },
+  { max: 120, color: "#FF9900", label: "Poor (90-120)" },
+  { max: 250, color: "#FF0000", label: "Very Poor (120-250)" },
+  { max: 9999, color: "#C00000", label: "Severe (250+)" },
+];
+function pm25Color(v) {
+  if (v == null) return "#9CA3AF";
+  return (PM25_BANDS.find(b => v < b.max) || PM25_BANDS[PM25_BANDS.length-1]).color;
+}
+
+function loadCPCBLayer(layer) {
+  return fetch("stations_cpcb_aq.json").then(r => {
+    if (!r.ok) throw new Error("not present");
+    return r.json();
+  }).then(payload => {
+    const stations = payload.stations || [];
+    let withPm = 0;
+    stations.forEach(s => {
+      const pm25 = s.pollutants?.["PM2.5"];
+      const pm10 = s.pollutants?.["PM10"];
+      const no2 = s.pollutants?.["NO2"];
+      if (pm25 != null) withPm++;
+      const color = pm25Color(pm25);
+      const radius = pm25 != null ? 5 : 3;
+      const polls = Object.entries(s.pollutants || {})
+        .map(([k, v]) => `<div class="prow"><span>${k}</span><b>${v}</b></div>`).join("");
+      layer.addLayer(L.circleMarker([s.lat, s.lon], {
+        radius, fillColor: color, color: "#FFFFFF", weight: 1, fillOpacity: 0.95,
+      }).bindPopup(`
+        <div class="pname">${s.name}<span class="city"> · ${s.city || s.state}</span></div>
+        ${polls || `<div class="prow"><span style="color:var(--text-muted)">no current readings</span></div>`}
+        ${s.last_update ? `<div class="prow" style="margin-top:6px"><span>Updated</span><b>${s.last_update}</b></div>` : ""}
+        <div class="prow"><span>Source</span><b>CPCB · data.gov.in</b></div>
+      `));
+    });
+    const el = document.getElementById("cpcb-status");
+    if (el) {
+      const b = el.querySelector(".badge"); if (b) { b.className = "badge ok"; b.textContent = "loaded"; }
+      const em = el.querySelector("em"); if (em) em.textContent = `${stations.length} stations · ${withPm} with PM2.5 (air quality, not temperature)`;
+    }
+    return `CPCB Air Quality (${withPm}/${stations.length} PM2.5)`;
+  }).catch(() => null);
+}
+
+// ===== WRI Resource Watch — projected temperature change layer =====
+function loadWRILayer(_layerRef, layerControl) {
+  const WRI_LAYERS = [
+    { id: "087a0f19-3c7d-4529-8225-955769816506", label: "WRI · Projected Δ Annual Max Temp · 2010 (RCP 8.5)" },
+    { id: "9e659c20-782a-440b-a2bb-f4d678d6964f", label: "WRI · Projected Δ Annual Max Temp · 2030 (RCP 8.5)" },
+  ];
+  WRI_LAYERS.forEach(spec => {
+    const tile = L.tileLayer(
+      `https://api.resourcewatch.org/v1/layer/${spec.id}/tile/gee/{z}/{x}/{y}`,
+      {
+        attribution: "Resource Watch · WRI / NEX-GDDP CMIP5",
+        opacity: 0.65, maxZoom: 7, tileSize: 256,
+        bounds: [[6.0, 67.0], [37.5, 98.0]],
+      }
+    );
+    layerControl.addOverlay(tile, spec.label);
+  });
+  // Update sidebar status
+  const el = document.getElementById("wri-status");
+  if (el) {
+    const b = el.querySelector(".badge"); if (b) { b.className = "badge ok"; b.textContent = "loaded"; }
+    const em = el.querySelector("em"); if (em) em.textContent = `${WRI_LAYERS.length} projected-temperature layers available in the layer control.`;
+  }
+}
+
+// ===== station layer loader =====
+function loadStationLayer(url, layer, sourceLabel, statusElId) {
+  return fetch(url).then(r => { if (!r.ok) throw new Error("not present"); return r.json(); }).then(payload => {
+    const stations = payload.stations || [];
+    const sane = t => t != null && t >= 5 && t <= 55;
+    const withTemp = stations.filter(s => sane(s.temperature_c));
+    stations.forEach(s => {
+      const ok = sane(s.temperature_c);
+      const m = L.circleMarker([s.lat, s.lon], {
+        radius: ok ? 5 : 2.5,
+        fillColor: ok ? colorFor(s.temperature_c) : "#9CA3AF",
+        color: "#FFFFFF", weight: 1, fillOpacity: 0.95,
+      }).bindPopup(`
+        <div class="pname">${s.name || s.id}<span class="city"> · ${s.city || s.state || sourceLabel}</span></div>
+        ${ok ? `<div class="prow"><span>Temperature</span><b>${(+s.temperature_c).toFixed(1)} °C</b></div>` :
+              (s.temperature_c != null ? `<div class="prow"><span>Temperature</span><b style="color:#991B1B">${(+s.temperature_c).toFixed(1)} °C (sensor error)</b></div>` :
+                                          `<div class="prow"><span>Temperature</span><b style="color:#9CA3AF">no current reading</b></div>`)}
+        ${s.observed_at ? `<div class="prow"><span>Observed</span><b>${s.observed_at}</b></div>` : ""}
+        ${s.provider ? `<div class="prow"><span>Provider</span><b>${s.provider}</b></div>` : ""}
+        <div class="prow"><span>Source</span><b>${sourceLabel}</b></div>
+      `);
+      layer.addLayer(m);
+    });
+    const el = document.getElementById(statusElId);
+    if (el) {
+      const b = el.querySelector(".badge"); if (b) { b.className = "badge ok"; b.textContent = "loaded"; }
+      const em = el.querySelector("em"); if (em) em.textContent = `${stations.length} stations · ${withTemp.length} with current temperature`;
+    }
+    return `${sourceLabel} stations (${withTemp.length}/${stations.length} with temp)`;
+  }).catch(() => null);
+}
+
+// ===== trend rendering =====
+function renderTrendCards(cities, trend) {
+  const series = trend.series;
+  const temps = cities.map(c => c.temperature_2m_c);
+  const tMean = temps.reduce((a, b) => a + b, 0) / temps.length;
+  const first10 = series.slice(0, 10).map(r => r.temperature_c);
+  const last10 = series.slice(-10).map(r => r.temperature_c);
+  const decadalDelta = (last10.reduce((a,b)=>a+b,0)/last10.length) - (first10.reduce((a,b)=>a+b,0)/first10.length);
+  const latest = series[series.length-1];
+  const anomaly = latest.temperature_c - (first10.reduce((a,b)=>a+b,0)/first10.length);
+
+  const cards = [
+    { label: "Today · 39-city mean", value: tMean.toFixed(1) + " °C", sub: "Open-Meteo current observations" },
+    { label: "Today · hottest", value: Math.max(...temps).toFixed(1) + " °C", sub: cities.find(c => c.temperature_2m_c === Math.max(...temps)).name },
+    { label: latest.year + " · all-India annual mean", value: latest.temperature_c.toFixed(2) + " °C", sub: "ERA5 8-city average" },
+    { label: "Decadal warming (1980s → 2020s)", value: (decadalDelta >= 0 ? "+" : "") + decadalDelta.toFixed(2) + " °C", sub: anomaly.toFixed(2) + " °C anomaly vs 1980s" },
+  ];
+  document.getElementById("trend-cards").innerHTML = cards.map(c =>
+    `<div class="card"><div class="label">${c.label}</div><div class="value">${c.value}</div><div class="sub">${c.sub}</div></div>`
+  ).join("");
+}
+
+function renderTrendChart(trend) {
+  const recs = trend.series;
+  const W = 1000, H = 280, P = { l: 50, r: 20, t: 20, b: 32 };
+  const years = recs.map(r => r.year);
+  const temps = recs.map(r => r.temperature_c);
+  const yMin = Math.floor(Math.min(...temps) * 4) / 4;
+  const yMax = Math.ceil(Math.max(...temps) * 4) / 4;
+  const xScale = i => P.l + (i / (recs.length - 1)) * (W - P.l - P.r);
+  const yScale = v => P.t + (1 - (v - yMin) / (yMax - yMin)) * (H - P.t - P.b);
+  const tempPath = recs.map((r, i) => `${i ? "L" : "M"}${xScale(i).toFixed(1)},${yScale(r.temperature_c).toFixed(1)}`).join(" ");
+  const roll = recs.map((r, i) => {
+    const w = recs.slice(Math.max(0, i-4), Math.min(recs.length, i+6));
+    return w.reduce((a,b) => a + b.temperature_c, 0) / w.length;
+  });
+  const rollPath = roll.map((v, i) => `${i ? "L" : "M"}${xScale(i).toFixed(1)},${yScale(v).toFixed(1)}`).join(" ");
+
+  // y gridlines
+  const yTicks = [];
+  for (let v = yMin; v <= yMax + 1e-9; v += 0.25) yTicks.push(v);
+  // x ticks every 5 years
+  const xTicks = recs.filter(r => r.year % 5 === 0);
+
+  document.getElementById("trend-chart-big").innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block; height: auto;">
+      ${yTicks.map(v => `
+        <line x1="${P.l}" y1="${yScale(v)}" x2="${W-P.r}" y2="${yScale(v)}" stroke="#E2E8F0" stroke-width="1"/>
+        <text x="${P.l-8}" y="${yScale(v)+4}" font-size="11" fill="#6B7280" text-anchor="end" font-family="Inter">${v.toFixed(2)}°C</text>
+      `).join("")}
+      ${xTicks.map(r => {
+        const i = recs.indexOf(r);
+        return `<text x="${xScale(i)}" y="${H - P.b + 18}" font-size="11" fill="#6B7280" text-anchor="middle" font-family="Inter">${r.year}</text>`;
+      }).join("")}
+      <path d="${tempPath}" stroke="#FF9900" stroke-width="1.2" fill="none" opacity="0.5"/>
+      <path d="${rollPath}" stroke="#C00000" stroke-width="2.2" fill="none"/>
+      <g font-family="Inter" font-size="11">
+        <rect x="${W-P.r-180}" y="${P.t}" width="172" height="44" fill="#FFFFFF" stroke="#E2E8F0" rx="6"/>
+        <line x1="${W-P.r-170}" y1="${P.t+15}" x2="${W-P.r-150}" y2="${P.t+15}" stroke="#FF9900" stroke-width="1.5" opacity="0.5"/>
+        <text x="${W-P.r-145}" y="${P.t+19}" fill="#374151">annual mean</text>
+        <line x1="${W-P.r-170}" y1="${P.t+33}" x2="${W-P.r-150}" y2="${P.t+33}" stroke="#C00000" stroke-width="2.5"/>
+        <text x="${W-P.r-145}" y="${P.t+37}" fill="#374151">10-year rolling mean</text>
+      </g>
+    </svg>`;
+}
+
+function renderCityDistribution(cities) {
+  const sorted = cities.slice().sort((a, b) => b.temperature_2m_c - a.temperature_2m_c);
+  const W = 1000, BAR_H = 22, P = { l: 140, r: 60, t: 8, b: 8 };
+  const H = P.t + P.b + sorted.length * BAR_H;
+  const maxT = Math.max(...sorted.map(c => c.temperature_2m_c));
+  const minT = Math.min(...sorted.map(c => c.temperature_2m_c));
+  const xScale = v => P.l + ((v - minT) / (maxT - minT)) * (W - P.l - P.r);
+  document.getElementById("dist-chart").innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block; height: auto;">
+      ${sorted.map((c, i) => {
+        const y = P.t + i * BAR_H;
+        const w = xScale(c.temperature_2m_c) - P.l;
+        return `
+          <text x="${P.l-8}" y="${y+15}" font-size="11" fill="#374151" text-anchor="end" font-family="Inter">${c.name}</text>
+          <rect x="${P.l}" y="${y+4}" width="${w}" height="${BAR_H-8}" fill="${colorFor(c.temperature_2m_c)}" rx="3"/>
+          <text x="${P.l+w+6}" y="${y+15}" font-size="11" fill="#111827" font-family="Inter" font-weight="600">${c.temperature_2m_c.toFixed(1)}°</text>
+        `;
+      }).join("")}
+    </svg>`;
+}
+
+function renderBandDistribution(cities) {
+  const counts = BANDS.map(b => ({ ...b, count: 0 }));
+  cities.forEach(c => {
+    const i = BANDS.findIndex(b => c.temperature_2m_c < b.max);
+    if (i >= 0) counts[i].count++;
+  });
+  const maxCount = Math.max(...counts.map(b => b.count), 1);
+  const W = 1000, H = 200, P = { l: 140, r: 20, t: 10, b: 10 };
+  const BAR_H = 28;
+  document.getElementById("band-chart").innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block; height: auto;">
+      ${counts.map((b, i) => {
+        const y = P.t + i * BAR_H;
+        const w = (b.count / maxCount) * (W - P.l - P.r);
+        return `
+          <text x="${P.l-8}" y="${y+19}" font-size="12" fill="#374151" text-anchor="end" font-family="Inter">${b.label}</text>
+          <rect x="${P.l}" y="${y+5}" width="${w}" height="${BAR_H-10}" fill="${b.color}" rx="3"/>
+          <text x="${P.l+w+8}" y="${y+19}" font-size="12" fill="#111827" font-family="Inter" font-weight="600">${b.count}</text>
+        `;
+      }).join("")}
+    </svg>`;
+}
+</script>
+</body>
+</html>
