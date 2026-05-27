@@ -705,9 +705,7 @@ Promise.all([
   const overlays = {
     "Cities (Open-Meteo)": cityLayer,
   };
-  overlays[gridWeather && gridWeather.length
-    ? `0.25° heat grid (${gridWeather.filter(g => g.temperature_2m != null).length} cells)`
-    : "Grid cells (0.25°, geometry only)"] = gridLayer;
+  overlays["0.25° ≈ 27 × 25 km"] = gridLayer;
   const layerControl = L.control.layers(
     {"Light (Carto Positron)": positron, "OpenStreetMap": osm},
     overlays,
