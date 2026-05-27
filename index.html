@@ -529,79 +529,98 @@ const weatherUnionLayer = L.layerGroup().addTo(map);
 let wriLayer = null;
 
 // ===== load city snapshot =====
-// Three browser-live models, no key needed: Open-Meteo (ICON/IFS/GFS blend, batched),
-// MET Norway (ECMWF-backed, per-city), 7Timer (GFS forecast, per-city).
-function fetchLiveCities() {
+// Fast path: Open-Meteo batched, single call, ~500ms. Returns 39 cities live.
+// MET Norway + 7Timer are layered in via enrichSecondaryModels() AFTER initial render.
+function fetchLiveCitiesFast() {
   return fetch("cities.json").then(r => r.json()).then(cities => {
     const lats = cities.map(c => c.lat).join(",");
     const lons = cities.map(c => c.lon).join(",");
-    const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
       `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m&timezone=Asia/Kolkata`;
-
-    const openMeteo = fetch(openMeteoUrl).then(r => {
+    return fetch(url).then(r => {
       if (!r.ok) throw new Error("Open-Meteo HTTP " + r.status);
       return r.json();
-    }).then(data => Array.isArray(data) ? data : [data]);
-
-    // MET Norway: per-city, ECMWF model. No CORS issues; default browser UA is accepted.
-    const metNorway = cities.map(c =>
-      fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat}&lon=${c.lon}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(j => {
-          const inst = j?.properties?.timeseries?.[0]?.data?.instant?.details;
-          return inst?.air_temperature ?? null;
-        })
-        .catch(() => null)
-    );
-
-    // 7Timer: per-city, GFS-based. First "civil" slot ≈ current.
-    const sevenTimer = cities.map(c =>
-      fetch(`https://www.7timer.info/bin/api.pl?lon=${c.lon}&lat=${c.lat}&product=civil&output=json`)
-        .then(r => r.ok ? r.json() : null)
-        .then(j => {
-          const first = j?.dataseries?.[0];
-          return first?.temp2m ?? null;
-        })
-        .catch(() => null)
-    );
-
-    return Promise.all([
-      openMeteo,
-      Promise.all(metNorway),
-      Promise.all(sevenTimer),
-    ]).then(([omArr, metArr, sevenArr]) => {
+    }).then(data => {
+      const arr = Array.isArray(data) ? data : [data];
       const live = cities.map((c, i) => {
-        const cur = (omArr[i] || {}).current || {};
+        const cur = (arr[i] || {}).current || {};
         const om = cur.temperature_2m;
-        const met = metArr[i];
-        const seven = sevenArr[i];
-        const vals = [om, met, seven].filter(v => v != null);
         return {
           name: c.name, state: c.state, lat: c.lat, lon: c.lon,
           temperature_2m_c: om,
           apparent_temperature_c: cur.apparent_temperature,
           relative_humidity_pct: cur.relative_humidity_2m,
           wind_speed_10m_kmh: cur.wind_speed_10m,
-          models: { "Open-Meteo": om, "MET Norway": met, "7Timer": seven },
-          model_spread: vals.length > 1 ? Math.max(...vals) - Math.min(...vals) : null,
+          models: { "Open-Meteo": om, "MET Norway": null, "7Timer": null },
+          model_spread: null,
         };
       });
-      const modelCounts = {
-        "Open-Meteo": live.filter(c => c.models["Open-Meteo"] != null).length,
-        "MET Norway": live.filter(c => c.models["MET Norway"] != null).length,
-        "7Timer": live.filter(c => c.models["7Timer"] != null).length,
-      };
-      return { cities: live, collected_at: new Date().toISOString(), live: true, model_counts: modelCounts };
+      return { cities: live, collected_at: new Date().toISOString(), live: true,
+               model_counts: { "Open-Meteo": live.filter(c => c.models["Open-Meteo"] != null).length, "MET Norway": 0, "7Timer": 0 } };
     });
   });
 }
 
+// Slow path: 78 per-city fetches. Fires after initial render; updates popups in place.
+function enrichSecondaryModels(cities, markersByName, snapRef) {
+  const metPromises = cities.map((c, i) =>
+    fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat}&lon=${c.lon}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => j?.properties?.timeseries?.[0]?.data?.instant?.details?.air_temperature ?? null)
+      .catch(() => null)
+      .then(v => { c.models["MET Norway"] = v; recomputeSpread(c); refreshPopup(c, markersByName); })
+  );
+  const sevenPromises = cities.map(c =>
+    fetch(`https://www.7timer.info/bin/api.pl?lon=${c.lon}&lat=${c.lat}&product=civil&output=json`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => j?.dataseries?.[0]?.temp2m ?? null)
+      .catch(() => null)
+      .then(v => { c.models["7Timer"] = v; recomputeSpread(c); refreshPopup(c, markersByName); })
+  );
+  Promise.all([...metPromises, ...sevenPromises]).then(() => {
+    snapRef.model_counts = {
+      "Open-Meteo": cities.filter(c => c.models["Open-Meteo"] != null).length,
+      "MET Norway": cities.filter(c => c.models["MET Norway"] != null).length,
+      "7Timer": cities.filter(c => c.models["7Timer"] != null).length,
+    };
+    const mc = snapRef.model_counts;
+    const pill = document.getElementById("live-pill");
+    if (pill) pill.title = `Models: Open-Meteo ${mc["Open-Meteo"]}/${cities.length} · MET Norway ${mc["MET Norway"]}/${cities.length} · 7Timer ${mc["7Timer"]}/${cities.length}`;
+  });
+}
+
+function recomputeSpread(c) {
+  const vals = Object.values(c.models).filter(v => v != null);
+  c.model_spread = vals.length > 1 ? Math.max(...vals) - Math.min(...vals) : null;
+}
+
+function refreshPopup(c, markersByName) {
+  const m = markersByName[c.name];
+  if (!m) return;
+  const modelRows = Object.entries(c.models).filter(([_, v]) => v != null).map(([k, v]) =>
+    `<div class="prow"><span>${k}</span><b>${(+v).toFixed(1)} °C</b></div>`
+  ).join("");
+  const spreadRow = c.model_spread != null
+    ? `<div class="prow" style="margin-top:4px;border-top:1px solid var(--border-light);padding-top:4px"><span>Spread</span><b style="color:${c.model_spread > 3 ? '#C00000' : 'var(--text-main)'}">${c.model_spread.toFixed(1)} °C</b></div>`
+    : "";
+  m.setPopupContent(`
+    <div class="pname">${c.name}<span class="city"> · ${c.state}</span></div>
+    ${modelRows}${spreadRow}
+    ${c.apparent_temperature_c != null ? `<div class="prow"><span>Feels like</span><b>${c.apparent_temperature_c.toFixed(1)} °C</b></div>` : ""}
+    ${c.relative_humidity_pct != null ? `<div class="prow"><span>Humidity</span><b>${c.relative_humidity_pct}%</b></div>` : ""}
+    ${c.wind_speed_10m_kmh != null ? `<div class="prow"><span>Wind</span><b>${c.wind_speed_10m_kmh.toFixed(1)} km/h</b></div>` : ""}
+  `);
+}
+
+const markersByName = {};
+
 Promise.all([
-  fetchLiveCities().catch(() => fetch("snapshot_cities.json").then(r => r.json())),
-  fetch("india_grid_weather.json").then(r => r.ok ? r.json() : null).catch(() => null),
-  fetch("india_grid.json").then(r => r.json()),
+  fetchLiveCitiesFast().catch(() => fetch("snapshot_cities.json").then(r => r.json())),
   fetch("india_temp_trend.json").then(r => r.json()),
-]).then(([snap, gridWeather, grid, trend]) => {
+]).then(([snap, trend]) => {
+  // Heavy JSONs lazy-load when their layer is toggled on, not on initial load.
+  const gridWeather = null;
+  const grid = null;
   const cities = snap.cities;
   const temps = cities.map(c => c.temperature_2m_c);
   const tMin = Math.min(...temps), tMax = Math.max(...temps);
@@ -629,14 +648,12 @@ Promise.all([
       radius: 9, fillColor: colorFor(c.temperature_2m_c),
       color: "#FFFFFF", weight: 2, fillOpacity: 1,
     });
+    markersByName[c.name] = marker;
     let modelRows = "";
     if (c.models) {
       modelRows = Object.entries(c.models).filter(([_, v]) => v != null).map(([k, v]) =>
         `<div class="prow"><span>${k}</span><b>${(+v).toFixed(1)} °C</b></div>`
       ).join("");
-      if (c.model_spread != null) {
-        modelRows += `<div class="prow" style="margin-top:4px;border-top:1px solid var(--border-light);padding-top:4px"><span>Spread</span><b style="color:${c.model_spread > 3 ? '#C00000' : 'var(--text-main)'}">${c.model_spread.toFixed(1)} °C</b></div>`;
-      }
     }
     marker.bindPopup(`
       <div class="pname">${c.name}<span class="city"> · ${c.state}</span></div>
@@ -648,53 +665,65 @@ Promise.all([
     cityLayer.addLayer(marker);
   });
 
-  // If the 4,441-cell weather payload is available, render the grid as colored heat
-  // cells (0.25° rectangles, six-band ramp). Otherwise show geometry dots.
-  const gridResolution = 0.25;
-  const half = gridResolution / 2;
-  if (Array.isArray(gridWeather) && gridWeather.length) {
-    gridWeather.forEach(g => {
-      if (g.temperature_2m == null) return;
-      const bounds = [[g.lat - half, g.lon - half], [g.lat + half, g.lon + half]];
-      gridLayer.addLayer(L.rectangle(bounds, {
-        color: colorFor(g.temperature_2m),
-        fillColor: colorFor(g.temperature_2m),
-        weight: 0,
-        fillOpacity: 0.55,
-      }).bindPopup(`
-        <div class="pname">Grid cell</div>
-        <div class="prow"><span>Coords</span><b>${g.lat.toFixed(2)}, ${g.lon.toFixed(2)}</b></div>
-        <div class="prow"><span>Temperature</span><b>${(+g.temperature_2m).toFixed(1)} °C</b></div>
-        ${g.relative_humidity_2m != null ? `<div class="prow"><span>Humidity</span><b>${g.relative_humidity_2m}%</b></div>` : ""}
-        ${g.wind_speed_10m != null ? `<div class="prow"><span>Wind</span><b>${g.wind_speed_10m} km/h</b></div>` : ""}
-        <div class="prow"><span>Source</span><b>Open-Meteo, 0.25° lattice</b></div>
-      `));
-    });
-  } else {
-    grid.forEach(g => {
-      gridLayer.addLayer(L.circleMarker([g.lat, g.lon], {
-        radius: 1.2, fillColor: "#008080", color: "#008080", weight: 0, fillOpacity: 0.35,
-      }));
-    });
+  // Kick off secondary models in the background (MET Norway + 7Timer) AFTER initial render
+  if (snap.live) {
+    setTimeout(() => enrichSecondaryModels(cities, markersByName, snap), 50);
   }
 
   const overlays = {
     "Cities (Open-Meteo)": cityLayer,
+    "0.25° heat grid": gridLayer,
   };
-  overlays[gridWeather && gridWeather.length
-    ? `0.25° heat grid (${gridWeather.filter(g => g.temperature_2m != null).length} cells)`
-    : "Grid cells (0.25°, geometry only)"] = gridLayer;
   const layerControl = L.control.layers(
     {"Light (Carto Positron)": positron, "OpenStreetMap": osm},
     overlays,
     { collapsed: false, position: "topright" }
   ).addTo(map);
 
-  loadStationLayer("stations_openaq.json", openaqLayer, "OpenAQ", "openaq-status")
-    .then(label => { if (label) layerControl.addOverlay(openaqLayer, label); });
-  loadCPCBLayer(cpcbAqLayer).then(label => { if (label) layerControl.addOverlay(cpcbAqLayer, label); });
-  loadMultiSourceLayer(multiSourceLayer).then(label => { if (label) layerControl.addOverlay(multiSourceLayer, label); });
+  // Weather Union is small + default-on → load immediately.
   loadWeatherUnionLayer(weatherUnionLayer).then(label => { if (label) layerControl.addOverlay(weatherUnionLayer, label); });
+
+  // Heavy layers lazy-load on first toggle-on.
+  const loaders = {
+    grid: () => fetch("india_grid_weather.json").then(r => r.json()).then(renderGridFromWeather),
+    openaq: () => loadStationLayer("stations_openaq.json", openaqLayer, "OpenAQ", "openaq-status").then(label => { if (label) layerControl.addOverlay(openaqLayer, label); }),
+    multisource: () => loadMultiSourceLayer(multiSourceLayer).then(label => { if (label) layerControl.addOverlay(multiSourceLayer, label); }),
+  };
+  const loaded = {};
+  function lazyLoad(key) {
+    if (loaded[key]) return Promise.resolve();
+    loaded[key] = true;
+    return loaders[key]();
+  }
+  map.on("overlayadd", e => {
+    if (e.layer === gridLayer) lazyLoad("grid");
+    if (e.layer === openaqLayer) lazyLoad("openaq");
+    if (e.layer === multiSourceLayer) lazyLoad("multisource");
+  });
+
+  // Eagerly start OpenAQ + multi-source if their JSONs are already in HTTP cache (instant).
+  // Otherwise they load when user toggles the layer or visits Sources.
+  document.querySelectorAll('.nav a[data-view="sources-view"]').forEach(a =>
+    a.addEventListener("click", () => lazyLoad("multisource"), { once: true })
+  );
+
+  function renderGridFromWeather(gw) {
+    if (!Array.isArray(gw) || !gw.length) return;
+    const half = 0.125;
+    gw.forEach(g => {
+      if (g.temperature_2m == null) return;
+      const bounds = [[g.lat - half, g.lon - half], [g.lat + half, g.lon + half]];
+      gridLayer.addLayer(L.rectangle(bounds, {
+        color: colorFor(g.temperature_2m),
+        fillColor: colorFor(g.temperature_2m),
+        weight: 0, fillOpacity: 0.55,
+      }).bindPopup(
+        `<div class="pname">Grid cell</div>
+         <div class="prow"><span>Coords</span><b>${g.lat.toFixed(2)}, ${g.lon.toFixed(2)}</b></div>
+         <div class="prow"><span>Temperature</span><b>${(+g.temperature_2m).toFixed(1)} °C</b></div>`
+      ));
+    });
+  }
 
   renderTrendCards(cities, trend);
   renderTrendChart(trend);
