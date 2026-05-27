@@ -818,28 +818,26 @@ function renderSourceStatus(rows) {
   rows.forEach(r => {
     bySource[r.source] = bySource[r.source] || { ok: 0, err: 0, sample_err: null };
     if (r.error) { bySource[r.source].err++; bySource[r.source].sample_err = r.error; }
-    else bySource[r.source].ok++;
+    else if (r.temperature_c != null) bySource[r.source].ok++;
+    else bySource[r.source].err++;
   });
-  // Only render sources that returned at least one successful reading.
-  const activeSources = SOURCE_META.filter(s => (bySource[s.name] || {}).ok > 0);
-  tbody.innerHTML = activeSources.map(s => {
-    const stat = bySource[s.name];
+  // Show ALL sources — each row carries its own status badge so the matrix is honest.
+  tbody.innerHTML = SOURCE_META.map(s => {
+    const stat = bySource[s.name] || { ok: 0, err: 0, sample_err: null };
+    let badge;
+    if (stat.ok > 0) badge = `<span class="badge ok">${stat.ok} ok</span>`;
+    else if (s.env !== "—") badge = `<span class="badge key">key needed</span>`;
+    else if ((stat.sample_err || "").includes("whitelist")) badge = `<span class="badge blocked">IP gated</span>`;
+    else if (stat.err > 0) badge = `<span class="badge empty">no data</span>`;
+    else badge = `<span class="badge empty">idle</span>`;
     return `<tr style="border-bottom: 1px solid var(--border-light);">
       <td style="padding: 8px 4px; font-weight: 600; color: var(--text-main);">${s.name}</td>
-      <td style="padding: 8px 4px;"><span class="badge ok">${stat.ok} ok</span></td>
+      <td style="padding: 8px 4px;">${badge}</td>
       <td style="padding: 8px 4px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--text-body);">${s.env}</td>
       <td style="padding: 8px 4px;"><a href="https://${s.signup}" target="_blank" rel="noopener">${s.signup}</a></td>
       <td style="padding: 8px 4px; color: var(--text-muted); font-size: 12px;">${s.note}</td>
     </tr>`;
   }).join("");
-  // Show the hidden/key-gated sources in a compact footnote.
-  const dormant = SOURCE_META.filter(s => !(bySource[s.name] || {}).ok && s.env !== "—");
-  if (dormant.length) {
-    tbody.insertAdjacentHTML("beforeend",
-      `<tr><td colspan="5" style="padding: 12px 4px 4px; color: var(--text-muted); font-size: 12px;">
-        Dormant (no key set): ${dormant.map(s => `<code>${s.env}</code> (${s.name})`).join(" · ")}
-      </td></tr>`);
-  }
 }
 
 function renderComparisonTable(locs) {
