@@ -58,8 +58,8 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for f in snapshot_cities.json stations_openaq.json stations_weatherunion.json india_temp_readings.json india_temp_readings.csv india_grid_weather.json india_grid_weather.partial.jsonl; do
-            [ -f "$f" ] && git add "$f"
+          for f in snapshot_cities.json stations_openaq.json stations_weatherunion.json india_temp_readings.json india_grid_weather.json india_grid_weather.partial.jsonl; do
+            [ -f "$f" ] && git add "$f" || true
           done
           if git diff --staged --quiet; then
             echo "no data changes this cycle"
