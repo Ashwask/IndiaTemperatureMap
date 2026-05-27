@@ -136,7 +136,8 @@
     font-weight: 400;
     color: var(--text-muted);
   }
-  aside .credit b { color: var(--text-muted); font-weight: 400; }
+  aside .credit a { color: var(--text-muted); text-decoration: none; }
+  aside .credit a:hover { color: var(--primary); text-decoration: underline; }
   #map { background: #E5ECF1; height: 100%; width: 100%; position: relative; }
 
   /* ===== Trends view ===== */
@@ -422,7 +423,7 @@
     <h2>Layers</h2>
     <div class="ref">Toggle in top-right of the map. Defaults show the city snapshot.</div>
 
-    <div class="credit">Built by <b>Studio Ikigai</b></div>
+    <div class="credit">Built by <a href="https://www.thestudioikigai.com/" target="_blank" rel="noopener">Studio Ikigai</a></div>
   </aside>
   <div id="map"></div>
 </section>
