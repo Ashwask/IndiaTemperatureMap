@@ -443,7 +443,6 @@
         <li><strong>39 city points</strong> — current temperature from Open-Meteo (state capitals + metros)</li>
         <li><strong>570 OpenAQ stations</strong> — India ground sensors, 509 from CPCB regulatory network + 34 AirGradient + others</li>
         <li><strong>4,441 grid cells</strong> at 0.25° clipped to India landmass (geometry only)</li>
-        <li><strong>MODIS LST</strong> — NASA daily Land Surface Temperature, ~1 km native</li>
       </ul>
     </div>
 
@@ -451,7 +450,6 @@
       <h3>Data sources</h3>
       <p><strong>Open-Meteo</strong> (open-meteo.com) — free, no key, AGPLv3 server, CC BY 4.0 data. Provides current, forecast, and historical archive (ERA5).</p>
       <p><strong>OpenAQ v3</strong> (openaq.org) — aggregates CPCB + community sensors. Requires free API key.</p>
-      <p><strong>NASA EOSDIS GIBS</strong> (gibs.earthdata.nasa.gov) — MODIS Terra/Aqua Land Surface Temperature. WMTS tiles, free.</p>
       <p><strong>Natural Earth 50m</strong> — country polygon used to clip the grid to India landmass.</p>
     </div>
 
@@ -523,16 +521,6 @@ const positron = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x
 const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap", maxZoom: 19,
 });
-
-const lstDate = "2026-05-25";
-const lstAqua = L.tileLayer(
-  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Aqua_Land_Surface_Temp_Day/default/${lstDate}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`,
-  { attribution: "NASA EOSDIS GIBS", opacity: 0.55, maxZoom: 7, tileSize: 256, bounds: MAP_BOUNDS }
-);
-const lstTerra = L.tileLayer(
-  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Land_Surface_Temp_Day/default/${lstDate}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`,
-  { attribution: "NASA EOSDIS GIBS", opacity: 0.55, maxZoom: 7, tileSize: 256, bounds: MAP_BOUNDS }
-);
 
 const cityLayer = L.layerGroup().addTo(map);
 const gridLayer = L.layerGroup();
@@ -698,9 +686,6 @@ Promise.all([
   overlays[gridWeather && gridWeather.length
     ? `0.25° heat grid (${gridWeather.filter(g => g.temperature_2m != null).length} cells)`
     : "Grid cells (0.25°, geometry only)"] = gridLayer;
-  overlays[`MODIS Aqua LST · ${lstDate}`] = lstAqua;
-  overlays[`MODIS Terra LST · ${lstDate}`] = lstTerra;
-
   const layerControl = L.control.layers(
     {"Light (Carto Positron)": positron, "OpenStreetMap": osm},
     overlays,

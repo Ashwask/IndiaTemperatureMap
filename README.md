@@ -14,14 +14,12 @@ data from every public/freemium source we could reach.
 - **OpenAQ ground stations** — 570 India stations (509 CPCB + AirGradient + Clean Air Catalyst), ~340 with sane current temperature.
 - **Weather Union ground sensors** — Zomato's hyperlocal sensor fleet, 37 discovered points spanning Bengaluru/Mumbai/Delhi-NCR/Pune/Hyderabad/Chennai/Kolkata/Ahmedabad/Jaipur/Lucknow/Chandigarh/Indore/Coimbatore.
 - **Multi-source sample points** — every one of the 39 cities × up to 12 source readings, side-by-side comparison.
-- **MODIS Aqua/Terra LST** — NASA EOSDIS GIBS satellite-derived Land Surface Temperature tiles, ~1 km native.
 
 ## Data freshness — what's live vs. cron
 
 | Layer | Mode | Refresh |
 |---|---|---|
 | 39 cities · 3 models | **browser-live** | Every page load |
-| MODIS LST | **live tiles** | NASA EOSDIS daily |
 | 0.25° heat grid | server snapshot | Every 3 h via GitHub Actions |
 | OpenAQ stations | server snapshot | Every 3 h via GitHub Actions |
 | Weather Union sensors | server snapshot | Every 3 h via GitHub Actions |
@@ -106,7 +104,7 @@ The cron schedule is every 3 hours UTC. Repo secrets `OPENAQ_API_KEY` and
 
 ## Acknowledgements
 
-Open-Meteo · OpenAQ · NASA EOSDIS GIBS · Zomato Weather Union · MET Norway · Iowa State ASOS · 7Timer · Natural Earth · WRI Resource Watch.
+Open-Meteo · OpenAQ · Zomato Weather Union · MET Norway · Iowa State ASOS · 7Timer · Natural Earth.
 
 ## License
 
