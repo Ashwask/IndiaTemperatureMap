@@ -126,7 +126,19 @@
     border-right: 1px solid var(--border-light);
     overflow-y: auto;
     padding: 18px;
+    display: flex;
+    flex-direction: column;
   }
+  aside .credit {
+    margin-top: auto;
+    padding-top: 18px;
+    border-top: 1px solid var(--border-light);
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  aside .credit b { color: var(--text-main); font-weight: 600; }
   #map { background: #E5ECF1; height: 100%; width: 100%; position: relative; }
 
   /* ===== Trends view ===== */
@@ -412,6 +424,7 @@
     <h2>Layers</h2>
     <div class="ref">Toggle in top-right of the map. Defaults show the city snapshot.</div>
 
+    <div class="credit">Built by <b>Studio Ikigai</b></div>
   </aside>
   <div id="map"></div>
 </section>
