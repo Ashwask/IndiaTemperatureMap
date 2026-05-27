@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>India Heat · Open Temperature Platform</title>
+<title>India Temperature Map</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -305,7 +305,7 @@
 <div class="topbar">
   <div class="brand">
     <span class="dot"></span>
-    India Heat<span class="sub">· open temperature platform</span>
+    India Temperature Map
   </div>
   <nav class="nav">
     <a class="active" data-view="map-view">Live Map</a>
@@ -343,27 +343,6 @@
 
     <h2>Layers</h2>
     <div class="ref">Toggle in top-right of the map. Defaults show the city snapshot.</div>
-
-    <h2>Hyperlocal ground stations</h2>
-    <div class="ref" id="openaq-status">
-      <strong>OpenAQ (India)</strong> <span class="badge ok">loaded</span><br>
-      <em>Status: not yet fetched.</em>
-    </div>
-    <div class="ref" id="cpcb-status">
-      <strong>CPCB Air Quality · data.gov.in</strong> <span class="badge key">loading</span><br>
-      <em>Status: fetching with shared demo key (rate-limited; may take ~90s).</em><br>
-      <small style="color:var(--text-muted)">Note: dataset is AQ pollutants (PM2.5, NO2, etc.), NOT temperature. Shown as a separate layer.</small>
-    </div>
-    <div class="ref">
-      <strong>IMD AWS network (~700 stations)</strong>
-      <span class="badge blocked">key gated</span><br>
-      API exists at <code>api.imd.gov.in/api/v1</code> but every endpoint returns 401. Request access from <code>aws.imd@gov.in</code>.
-    </div>
-    <div class="ref">
-      <strong>Sensor.Community India</strong>
-      <span class="badge empty">empty</span><br>
-      0 temperature sensors confirmed.
-    </div>
 
   </aside>
   <div id="map"></div>
@@ -419,6 +398,33 @@
     </div>
 
     <div class="panel">
+      <h3>Hyperlocal ground stations</h3>
+      <div class="panel-sub">Status of each India ground-sensor network.</div>
+      <div class="ref" id="openaq-status">
+        <strong>OpenAQ (India)</strong> <span class="badge ok">loaded</span><br>
+        <em>Status: not yet fetched.</em>
+      </div>
+      <div class="ref" id="cpcb-status">
+        <strong>CPCB Air Quality · data.gov.in</strong> <span class="badge key">demo</span><br>
+        <em>Dataset is AQ pollutants (PM2.5, NO2, etc.), NOT temperature. Shown as a separate map layer.</em>
+      </div>
+      <div class="ref">
+        <strong>IMD AWS network (~700 stations)</strong>
+        <span class="badge blocked">key gated</span><br>
+        API exists at <code>api.imd.gov.in/api/v1</code> but every endpoint returns 401. Request access from <code>aws.imd@gov.in</code>.
+      </div>
+      <div class="ref">
+        <strong>Sensor.Community India</strong>
+        <span class="badge empty">empty</span><br>
+        0 temperature sensors confirmed (the global network has not been adopted in India).
+      </div>
+      <div class="ref">
+        <strong>Weather Union (Zomato)</strong> <span class="badge ok">live</span><br>
+        Hyperlocal ground-sensor fleet across metros; results in the "Weather Union ground sensors" map layer.
+      </div>
+    </div>
+
+    <div class="panel">
       <h3>Per-location comparison</h3>
       <div class="panel-sub">Each row is one of the 7 sample localities. Cells show °C from each source (— = no data, ✕ = key missing or error).</div>
       <div style="overflow-x: auto;">
@@ -460,14 +466,6 @@
       <p><strong>WRI India / CSTEP</strong> — heat-vulnerability and climate-risk products are published as PDFs and pre-rendered choropleths, not as tile services.</p>
     </div>
 
-    <div class="panel">
-      <h3>Files in this directory</h3>
-      <p style="font-family: ui-monospace, Menlo, monospace; font-size: 12px; line-height: 1.9;">
-        <code>fetch.py</code> · <code>grid.py</code> · <code>fetch_openaq.py</code> · <code>fetch_datagovin.py</code> · <code>build_india_trend.py</code><br>
-        <code>cities.json</code> · <code>india_grid.json</code> · <code>india_polygon.json</code><br>
-        <code>snapshot_cities.json</code> · <code>stations_openaq.json</code> · <code>india_temp_trend.json</code>
-      </p>
-    </div>
   </div>
 </section>
 
