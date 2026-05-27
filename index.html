@@ -1130,7 +1130,8 @@ function renderTrendChart(trend) {
   // Treat YTD year separately — exclude from main line + rolling mean (it's partial).
   const completeRecs = recs.filter(r => !r.ytd);
   const ytdRec = recs.find(r => r.ytd) || null;
-  const W = 1000, H = 280, P = { l: 50, r: 20, t: 20, b: 32 };
+  // Right padding bumped so the YTD label has room without clipping.
+  const W = 1000, H = 280, P = { l: 50, r: ytdRec ? 90 : 20, t: 20, b: 32 };
   const temps = recs.map(r => r.temperature_c);
   const yMin = Math.floor(Math.min(...temps) * 4) / 4;
   const yMax = Math.ceil(Math.max(...temps) * 4) / 4;
@@ -1149,16 +1150,23 @@ function renderTrendChart(trend) {
     const idx = recs.indexOf(completeRecs[i]);
     return `${i ? "L" : "M"}${xScale(idx).toFixed(1)},${yScale(v).toFixed(1)}`;
   }).join(" ");
-  // YTD marker — open circle with label, placed at the same x-axis position
-  const ytdDot = ytdRec ? `
-    <line x1="${xScale(recs.indexOf(ytdRec))}" y1="${yScale(ytdRec.temperature_c)}"
-          x2="${xScale(recs.indexOf(completeRecs[completeRecs.length-1]))}" y2="${yScale(completeRecs[completeRecs.length-1].temperature_c)}"
-          stroke="#FF9900" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.55"/>
-    <circle cx="${xScale(recs.indexOf(ytdRec))}" cy="${yScale(ytdRec.temperature_c)}" r="5"
-            fill="#FFFFFF" stroke="#C00000" stroke-width="2"/>
-    <text x="${xScale(recs.indexOf(ytdRec)) + 8}" y="${yScale(ytdRec.temperature_c) - 6}"
-          font-size="10" fill="#C00000" font-family="Inter" font-weight="600">${ytdRec.year} YTD</text>
-  ` : "";
+  // YTD marker — open circle + label to the right (right padding reserved for it).
+  let ytdDot = "";
+  if (ytdRec) {
+    const yIdx = recs.indexOf(ytdRec);
+    const cIdx = recs.indexOf(completeRecs[completeRecs.length - 1]);
+    const cx = xScale(yIdx), cy = yScale(ytdRec.temperature_c);
+    ytdDot = `
+      <line x1="${xScale(cIdx)}" y1="${yScale(completeRecs[completeRecs.length-1].temperature_c)}"
+            x2="${cx}" y2="${cy}"
+            stroke="#FF9900" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.55"/>
+      <circle cx="${cx}" cy="${cy}" r="5" fill="#FFFFFF" stroke="#C00000" stroke-width="2"/>
+      <text x="${cx + 10}" y="${cy + 4}" font-size="11" fill="#C00000"
+            font-family="Inter" font-weight="600">${ytdRec.year} YTD</text>
+      <text x="${cx + 10}" y="${cy + 18}" font-size="10" fill="#6B7280"
+            font-family="Inter">${ytdRec.temperature_c.toFixed(2)}°C</text>
+    `;
+  }
 
   // y gridlines
   const yTicks = [];
@@ -1180,13 +1188,17 @@ function renderTrendChart(trend) {
       <path d="${rollPath}" stroke="#C00000" stroke-width="2.2" fill="none"/>
       ${ytdDot}
       <g font-family="Inter" font-size="11">
-        <rect x="${W-P.r-180}" y="${P.t}" width="172" height="${ytdRec ? 60 : 44}" fill="#FFFFFF" stroke="#E2E8F0" rx="6"/>
-        <line x1="${W-P.r-170}" y1="${P.t+15}" x2="${W-P.r-150}" y2="${P.t+15}" stroke="#FF9900" stroke-width="1.5" opacity="0.5"/>
-        <text x="${W-P.r-145}" y="${P.t+19}" fill="#374151">annual mean</text>
-        <line x1="${W-P.r-170}" y1="${P.t+33}" x2="${W-P.r-150}" y2="${P.t+33}" stroke="#C00000" stroke-width="2.5"/>
-        <text x="${W-P.r-145}" y="${P.t+37}" fill="#374151">10-year rolling mean</text>
-        ${ytdRec ? `<circle cx="${W-P.r-160}" cy="${P.t+50}" r="4" fill="#FFFFFF" stroke="#C00000" stroke-width="2"/>
-                    <text x="${W-P.r-145}" y="${P.t+54}" fill="#374151">YTD (partial year)</text>` : ""}
+        <rect x="${P.l + 8}" y="${P.t}" width="190" height="${ytdRec ? 60 : 44}"
+              fill="#FFFFFF" stroke="#E2E8F0" rx="6"/>
+        <line x1="${P.l + 18}" y1="${P.t+15}" x2="${P.l + 38}" y2="${P.t+15}"
+              stroke="#FF9900" stroke-width="1.5" opacity="0.5"/>
+        <text x="${P.l + 44}" y="${P.t+19}" fill="#374151">annual mean</text>
+        <line x1="${P.l + 18}" y1="${P.t+33}" x2="${P.l + 38}" y2="${P.t+33}"
+              stroke="#C00000" stroke-width="2.5"/>
+        <text x="${P.l + 44}" y="${P.t+37}" fill="#374151">10-year rolling mean</text>
+        ${ytdRec ? `<circle cx="${P.l + 28}" cy="${P.t+50}" r="4"
+                            fill="#FFFFFF" stroke="#C00000" stroke-width="2"/>
+                    <text x="${P.l + 44}" y="${P.t+54}" fill="#374151">YTD (partial year)</text>` : ""}
       </g>
     </svg>`;
 }
