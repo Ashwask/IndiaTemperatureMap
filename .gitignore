@@ -2,7 +2,6 @@
 ne_50m_countries.geojson
 india_grid_weather.partial.jsonl
 *.csv
-all_cities.csv
 
 # safety net for env files
 .env

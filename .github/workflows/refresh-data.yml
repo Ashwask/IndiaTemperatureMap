@@ -1,0 +1,98 @@
+name: Refresh data
+
+on:
+  schedule:
+    # Every 3 hours UTC (≈ 5:30 / 8:30 / 11:30 / 14:30 / 17:30 / 20:30 / 23:30 / 02:30 IST)
+    - cron: '0 */3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install runtime deps
+        run: pip install --quiet requests
+
+      - name: Refresh 39-city snapshot (Open-Meteo)
+        run: python3 fetch.py --json > snapshot_cities_raw.json && python3 -c "
+        import json
+        raw = json.load(open('snapshot_cities_raw.json'))
+        cities = []
+        for entry in raw:
+            c = entry['city']
+            cur = entry['weather'].get('current', {})
+            cities.append({
+                'name': c['name'], 'state': c['state'], 'lat': c['lat'], 'lon': c['lon'],
+                'temperature_2m_c': cur.get('temperature_2m'),
+                'apparent_temperature_c': cur.get('apparent_temperature'),
+                'relative_humidity_pct': cur.get('relative_humidity_2m'),
+                'wind_speed_10m_kmh': cur.get('wind_speed_10m'),
+            })
+        import time
+        out = {
+            'source': 'Open-Meteo /v1/forecast (current)',
+            'collected_at': time.strftime('%Y-%m-%dT%H:%M:%S+05:30'),
+            'timezone': 'Asia/Kolkata',
+            'fields': ['temperature_2m_c', 'apparent_temperature_c', 'relative_humidity_pct', 'wind_speed_10m_kmh'],
+            'cities': cities,
+        }
+        json.dump(out, open('snapshot_cities.json', 'w'), indent=2)
+        print(f'wrote {len(cities)} cities')
+        "
+        continue-on-error: true
+
+      - name: Refresh OpenAQ stations (India temperature)
+        env:
+          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+        run: python3 fetch_openaq.py
+        continue-on-error: true
+
+      - name: Refresh Weather Union ground sensors
+        env:
+          WEATHER_UNION_KEY: ${{ secrets.WEATHER_UNION_KEY }}
+        run: python3 discover_weatherunion.py
+        continue-on-error: true
+
+      - name: Refresh multi-source comparison (all 39 cities × 12 sources)
+        env:
+          WEATHER_UNION_KEY: ${{ secrets.WEATHER_UNION_KEY }}
+          OPEN_INDIA_TEMP_UA: 'india-heat-map github-actions (ashwask)'
+        run: python3 india_temp_pull.py --locations all_cities.csv --quiet
+        continue-on-error: true
+
+      - name: Refresh 0.25° heat grid (resumes from partial)
+        run: timeout 900 python3 grid.py --resolution 0.25 --chunk 100 --sleep 11 || true
+        continue-on-error: true
+
+      - name: Commit + push if anything changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add snapshot_cities.json \
+                  stations_openaq.json \
+                  stations_weatherunion.json \
+                  india_temp_readings.json \
+                  india_temp_readings.csv \
+                  india_grid_weather.json \
+                  india_grid_weather.partial.jsonl 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "no data changes this cycle"
+          else
+            git commit -m "auto: data refresh $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi
