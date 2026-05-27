@@ -131,7 +131,7 @@ def main() -> int:
         "parameter_id": param_id,
         "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "stations": stations,
-    }, indent=2))
+    }, separators=(",", ":")))
     with_values = sum(1 for s in stations if s["temperature_c"] is not None)
     print(f"saved {len(stations)} stations ({with_values} with current temperature) → {OUT.name}", file=sys.stderr)
     return 0

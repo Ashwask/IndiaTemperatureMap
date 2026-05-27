@@ -82,7 +82,7 @@ def main() -> int:
         "cities": [c[0] for c in CITIES],
         "method": "Annual mean per city, then mean across cities. Years with <350 days dropped.",
         "series": series,
-    }, indent=2))
+    }, separators=(",", ":")))
     print(f"saved {len(series)} annual values → {OUT.name}", file=sys.stderr)
     delta = series[-1]["temperature_c"] - series[0]["temperature_c"]
     print(f"  {series[0]['year']}: {series[0]['temperature_c']}°C  →  {series[-1]['year']}: {series[-1]['temperature_c']}°C  (Δ {delta:+.2f}°C)", file=sys.stderr)

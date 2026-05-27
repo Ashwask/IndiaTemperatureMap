@@ -586,32 +586,36 @@ function fetchLiveCities() {
       return r.json();
     }).then(data => Array.isArray(data) ? data : [data]);
 
-    // MET Norway: per-city, ECMWF model. No CORS issues; default browser UA is accepted.
-    const metNorway = cities.map(c =>
+    // Cap concurrency to 8 — avoids socket exhaustion on browsers (Chrome ~6 per host).
+    async function withCap(tasks, cap) {
+      const results = new Array(tasks.length);
+      let i = 0;
+      await Promise.all(Array(Math.min(cap, tasks.length)).fill(0).map(async () => {
+        while (i < tasks.length) {
+          const idx = i++;
+          results[idx] = await tasks[idx]();
+        }
+      }));
+      return results;
+    }
+
+    const metNorwayTasks = cities.map(c => () =>
       fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat}&lon=${c.lon}`)
         .then(r => r.ok ? r.json() : null)
-        .then(j => {
-          const inst = j?.properties?.timeseries?.[0]?.data?.instant?.details;
-          return inst?.air_temperature ?? null;
-        })
+        .then(j => j?.properties?.timeseries?.[0]?.data?.instant?.details?.air_temperature ?? null)
         .catch(() => null)
     );
-
-    // 7Timer: per-city, GFS-based. First "civil" slot ≈ current.
-    const sevenTimer = cities.map(c =>
+    const sevenTimerTasks = cities.map(c => () =>
       fetch(`https://www.7timer.info/bin/api.pl?lon=${c.lon}&lat=${c.lat}&product=civil&output=json`)
         .then(r => r.ok ? r.json() : null)
-        .then(j => {
-          const first = j?.dataseries?.[0];
-          return first?.temp2m ?? null;
-        })
+        .then(j => j?.dataseries?.[0]?.temp2m ?? null)
         .catch(() => null)
     );
 
     return Promise.all([
       openMeteo,
-      Promise.all(metNorway),
-      Promise.all(sevenTimer),
+      withCap(metNorwayTasks, 8),
+      withCap(sevenTimerTasks, 8),
     ]).then(([omArr, metArr, sevenArr]) => {
       const live = cities.map((c, i) => {
         const cur = (omArr[i] || {}).current || {};

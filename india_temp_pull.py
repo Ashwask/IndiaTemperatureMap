@@ -623,7 +623,7 @@ def write_csv(readings: list[Reading], path: str) -> None:
 
 def write_json(readings: list[Reading], path: str) -> None:
     with open(path, "w", encoding="utf-8") as f:
-        json.dump([asdict(r) for r in readings], f, indent=2, ensure_ascii=False)
+        json.dump([asdict(r) for r in readings], f, separators=(",", ":"), ensure_ascii=False)
 
 
 def load_locations(args) -> list[dict]:

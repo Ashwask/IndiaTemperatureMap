@@ -78,7 +78,7 @@ def main() -> int:
         json.dump(
             [{"city": c, "weather": r} for c, r in zip(cities, results)],
             sys.stdout,
-            indent=2,
+            separators=(",", ":"),
         )
         print()
     else:

@@ -90,7 +90,7 @@ def main() -> int:
         "resource_id": RESOURCE_ID,
         "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "stations": stations_list,
-    }, indent=2))
+    }, separators=(",", ":")))
     print(
         f"saved {len(stations_list)} stations ({len(with_temp)} with temperature) → {OUT.name}",
         file=sys.stderr,
