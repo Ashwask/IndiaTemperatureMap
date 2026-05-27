@@ -635,79 +635,98 @@ const weatherUnionLayer = L.layerGroup().addTo(map);
 let wriLayer = null;
 
 // ===== load city snapshot =====
-// Three browser-live models, no key needed: Open-Meteo (ICON/IFS/GFS blend, batched),
-// MET Norway (ECMWF-backed, per-city), 7Timer (GFS forecast, per-city).
-function fetchLiveCities() {
+// Fast path: Open-Meteo batched only (1 call, ~500ms). MET Norway and 7Timer
+// stream in via enrichSecondaryModels() AFTER initial render — keeps the page
+// interactive ~5× faster.
+function fetchLiveCitiesFast() {
   return fetch("cities.json").then(r => r.json()).then(cities => {
     const lats = cities.map(c => c.lat).join(",");
     const lons = cities.map(c => c.lon).join(",");
-    const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}` +
       `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m&timezone=Asia/Kolkata`;
-
-    const openMeteo = fetch(openMeteoUrl).then(r => {
+    return fetch(url).then(r => {
       if (!r.ok) throw new Error("Open-Meteo HTTP " + r.status);
       return r.json();
-    }).then(data => Array.isArray(data) ? data : [data]);
-
-    // Cap concurrency to 8 — avoids socket exhaustion on browsers (Chrome ~6 per host).
-    async function withCap(tasks, cap) {
-      const results = new Array(tasks.length);
-      let i = 0;
-      await Promise.all(Array(Math.min(cap, tasks.length)).fill(0).map(async () => {
-        while (i < tasks.length) {
-          const idx = i++;
-          results[idx] = await tasks[idx]();
-        }
-      }));
-      return results;
-    }
-
-    const metNorwayTasks = cities.map(c => () =>
-      fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat}&lon=${c.lon}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(j => j?.properties?.timeseries?.[0]?.data?.instant?.details?.air_temperature ?? null)
-        .catch(() => null)
-    );
-    const sevenTimerTasks = cities.map(c => () =>
-      fetch(`https://www.7timer.info/bin/api.pl?lon=${c.lon}&lat=${c.lat}&product=civil&output=json`)
-        .then(r => r.ok ? r.json() : null)
-        .then(j => j?.dataseries?.[0]?.temp2m ?? null)
-        .catch(() => null)
-    );
-
-    return Promise.all([
-      openMeteo,
-      withCap(metNorwayTasks, 8),
-      withCap(sevenTimerTasks, 8),
-    ]).then(([omArr, metArr, sevenArr]) => {
+    }).then(data => {
+      const arr = Array.isArray(data) ? data : [data];
       const live = cities.map((c, i) => {
-        const cur = (omArr[i] || {}).current || {};
+        const cur = (arr[i] || {}).current || {};
         const om = cur.temperature_2m;
-        const met = metArr[i];
-        const seven = sevenArr[i];
-        const vals = [om, met, seven].filter(v => v != null);
         return {
           name: c.name, state: c.state, lat: c.lat, lon: c.lon,
           temperature_2m_c: om,
           apparent_temperature_c: cur.apparent_temperature,
           relative_humidity_pct: cur.relative_humidity_2m,
           wind_speed_10m_kmh: cur.wind_speed_10m,
-          models: { "Open-Meteo": om, "MET Norway": met, "7Timer": seven },
-          model_spread: vals.length > 1 ? Math.max(...vals) - Math.min(...vals) : null,
+          models: { "Open-Meteo": om, "MET Norway": null, "7Timer": null },
+          model_spread: null,
         };
       });
-      const modelCounts = {
-        "Open-Meteo": live.filter(c => c.models["Open-Meteo"] != null).length,
-        "MET Norway": live.filter(c => c.models["MET Norway"] != null).length,
-        "7Timer": live.filter(c => c.models["7Timer"] != null).length,
-      };
-      return { cities: live, collected_at: new Date().toISOString(), live: true, model_counts: modelCounts };
+      return { cities: live, collected_at: new Date().toISOString(), live: true,
+               model_counts: {
+                 "Open-Meteo": live.filter(c => c.models["Open-Meteo"] != null).length,
+                 "MET Norway": 0, "7Timer": 0,
+               } };
     });
   });
 }
 
+async function withCap(tasks, cap) {
+  let i = 0;
+  await Promise.all(Array(Math.min(cap, tasks.length)).fill(0).map(async () => {
+    while (i < tasks.length) await tasks[i++]();
+  }));
+}
+
+function buildCityPopupHTML(c) {
+  const modelRows = Object.entries(c.models).filter(([_, v]) => v != null).map(([k, v]) =>
+    `<div class="prow"><span>${k}</span><b>${(+v).toFixed(1)} °C</b></div>`
+  ).join("");
+  const spreadRow = c.model_spread != null
+    ? `<div class="prow" style="margin-top:4px;border-top:1px solid var(--border-light);padding-top:4px"><span>Spread</span><b style="color:${c.model_spread > 3 ? '#C00000' : 'var(--text-main)'}">${c.model_spread.toFixed(1)} °C</b></div>`
+    : "";
+  return `<div class="pname">${c.name}<span class="city"> · ${c.state}</span></div>
+    ${modelRows || `<div class="prow"><span>Temperature</span><b>${c.temperature_2m_c.toFixed(1)} °C</b></div>`}${spreadRow}
+    ${c.apparent_temperature_c != null ? `<div class="prow"><span>Feels like</span><b>${c.apparent_temperature_c.toFixed(1)} °C</b></div>` : ""}
+    ${c.relative_humidity_pct != null ? `<div class="prow"><span>Humidity</span><b>${c.relative_humidity_pct}%</b></div>` : ""}
+    ${c.wind_speed_10m_kmh != null ? `<div class="prow"><span>Wind</span><b>${c.wind_speed_10m_kmh.toFixed(1)} km/h</b></div>` : ""}`;
+}
+
+async function enrichSecondaryModels(cities, markersByName) {
+  function recompute(c) {
+    const vals = Object.values(c.models).filter(v => v != null);
+    c.model_spread = vals.length > 1 ? Math.max(...vals) - Math.min(...vals) : null;
+    const m = markersByName[c.name];
+    if (m) m.setPopupContent(buildCityPopupHTML(c));
+  }
+  const metTasks = cities.map(c => async () => {
+    try {
+      const r = await fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat}&lon=${c.lon}`);
+      const j = r.ok ? await r.json() : null;
+      c.models["MET Norway"] = j?.properties?.timeseries?.[0]?.data?.instant?.details?.air_temperature ?? null;
+    } catch { c.models["MET Norway"] = null; }
+    recompute(c);
+  });
+  const sevenTasks = cities.map(c => async () => {
+    try {
+      const r = await fetch(`https://www.7timer.info/bin/api.pl?lon=${c.lon}&lat=${c.lat}&product=civil&output=json`);
+      const j = r.ok ? await r.json() : null;
+      c.models["7Timer"] = j?.dataseries?.[0]?.temp2m ?? null;
+    } catch { c.models["7Timer"] = null; }
+    recompute(c);
+  });
+  await Promise.all([withCap(metTasks, 8), withCap(sevenTasks, 8)]);
+  const pill = document.getElementById("live-pill");
+  if (pill) {
+    const ok = m => cities.filter(c => c.models[m] != null).length;
+    pill.title = `Models: Open-Meteo ${ok("Open-Meteo")}/${cities.length} · MET Norway ${ok("MET Norway")}/${cities.length} · 7Timer ${ok("7Timer")}/${cities.length}`;
+  }
+}
+
+const markersByName = {};
+
 Promise.all([
-  fetchLiveCities().catch(() => fetch("snapshot_cities.json").then(r => r.json())),
+  fetchLiveCitiesFast().catch(() => fetch("snapshot_cities.json").then(r => r.json())),
   fetch("india_grid_weather.json").then(r => r.ok ? r.json() : null).catch(() => null).then(gw => {
     // Backward-compat: support both the legacy array-of-objects and the new
     // columnar { keys, cells } format. Normalise to array-of-objects shape
@@ -752,28 +771,24 @@ Promise.all([
   }
 
   cities.forEach(c => {
+    if (!c.models) {
+      // Static snapshot fallback — wrap into the models shape
+      c.models = { "Open-Meteo": c.temperature_2m_c, "MET Norway": null, "7Timer": null };
+    }
     const marker = L.circleMarker([c.lat, c.lon], {
       radius: 9, fillColor: colorFor(c.temperature_2m_c),
       color: "#FFFFFF", weight: 2, fillOpacity: 1,
     });
-    let modelRows = "";
-    if (c.models) {
-      modelRows = Object.entries(c.models).filter(([_, v]) => v != null).map(([k, v]) =>
-        `<div class="prow"><span>${k}</span><b>${(+v).toFixed(1)} °C</b></div>`
-      ).join("");
-      if (c.model_spread != null) {
-        modelRows += `<div class="prow" style="margin-top:4px;border-top:1px solid var(--border-light);padding-top:4px"><span>Spread</span><b style="color:${c.model_spread > 3 ? '#C00000' : 'var(--text-main)'}">${c.model_spread.toFixed(1)} °C</b></div>`;
-      }
-    }
-    marker.bindPopup(`
-      <div class="pname">${c.name}<span class="city"> · ${c.state}</span></div>
-      ${modelRows || `<div class="prow"><span>Temperature</span><b>${c.temperature_2m_c.toFixed(1)} °C</b></div>`}
-      ${c.apparent_temperature_c != null ? `<div class="prow"><span>Feels like</span><b>${c.apparent_temperature_c.toFixed(1)} °C</b></div>` : ""}
-      ${c.relative_humidity_pct != null ? `<div class="prow"><span>Humidity</span><b>${c.relative_humidity_pct}%</b></div>` : ""}
-      ${c.wind_speed_10m_kmh != null ? `<div class="prow"><span>Wind</span><b>${c.wind_speed_10m_kmh.toFixed(1)} km/h</b></div>` : ""}
-    `);
+    marker.bindPopup(buildCityPopupHTML(c));
+    markersByName[c.name] = marker;
     cityLayer.addLayer(marker);
   });
+
+  // Fire MET Norway + 7Timer enrichment AFTER initial render — popups update
+  // silently as values arrive (via setPopupContent on cached markers).
+  if (snap.live) {
+    setTimeout(() => enrichSecondaryModels(cities, markersByName), 50);
+  }
 
   // If the 4,441-cell weather payload is available, render the grid as colored heat
   // cells (0.25° rectangles, six-band ramp). Otherwise show geometry dots.
