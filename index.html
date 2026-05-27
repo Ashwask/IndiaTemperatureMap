@@ -507,8 +507,10 @@ const MAP_BOUNDS = [[6.0, 67.0], [37.5, 98.0]];
 const map = L.map("map", {
   center: [22.5, 80],
   zoom: 5,
-  minZoom: 4,
+  minZoom: 5,
   maxZoom: 10,
+  maxBounds: [[4.0, 65.0], [39.0, 100.0]],   // pan-lock to India (with small slack)
+  maxBoundsViscosity: 1.0,                   // hard wall — drag bounces back
   preferCanvas: true,
 }).fitBounds(MAP_BOUNDS);
 
@@ -519,6 +521,23 @@ const positron = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x
 const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap", maxZoom: 19,
 });
+
+// Mask everything outside India with a translucent overlay so neighbouring
+// countries fade out and only the Indian landmass is foregrounded.
+fetch("india_polygon.json").then(r => r.json()).then(polys => {
+  // World rectangle (outer ring, lat/lon order)
+  const worldOuter = [[85, -179.9], [-85, -179.9], [-85, 179.9], [85, 179.9], [85, -179.9]];
+  // India outer rings become holes in our world mask. Each poly in MultiPolygon
+  // is [outerRing, ...holes]; we only need the outer ring as a hole here.
+  const holes = polys.map(p => p[0].map(([lon, lat]) => [lat, lon]));
+  L.polygon([worldOuter, ...holes], {
+    stroke: false,
+    fillColor: "#F6F8FA",
+    fillOpacity: 0.85,
+    interactive: false,
+    pane: "overlayPane",
+  }).addTo(map);
+}).catch(() => {});
 
 const cityLayer = L.layerGroup().addTo(map);
 const gridLayer = L.layerGroup();
