@@ -700,7 +700,7 @@ Promise.all([
   const overlays = {
     "Cities (Open-Meteo)": cityLayer,
   };
-  overlays["0.25° ≈ 27 × 25 km"] = gridLayer;
+  overlays["0.25° ≈ 27 × 25 km · 4,441 cells across India"] = gridLayer;
   const layerControl = L.control.layers(
     {"Light (Carto Positron)": positron, "OpenStreetMap": osm},
     overlays,
