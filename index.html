@@ -344,6 +344,11 @@
     <h2>Layers</h2>
     <div class="ref">Toggle in top-right of the map. Defaults show the city snapshot.</div>
 
+    <h2>About the 0.25° grid</h2>
+    <div class="ref">
+      <strong>0.25° ≈ 27 × 25 km</strong> per cell at India's latitudes. The 4,441 cells tile the entire Indian landmass — mainland + Andaman &amp; Nicobar + Lakshadweep — at the native resolution of the underlying ECMWF/ERA5 model that Open-Meteo serves.
+    </div>
+
   </aside>
   <div id="map"></div>
 </section>
@@ -448,7 +453,7 @@
       <ul style="margin: 8px 0 0; padding-left: 18px; line-height: 1.7;">
         <li><strong>39 city points</strong> — current temperature from Open-Meteo (state capitals + metros)</li>
         <li><strong>570 OpenAQ stations</strong> — India ground sensors, 509 from CPCB regulatory network + 34 AirGradient + others</li>
-        <li><strong>4,441 grid cells</strong> at 0.25° clipped to India landmass (geometry only)</li>
+        <li><strong>4,441 grid cells</strong> at 0.25° (≈ 27 × 25 km each) clipped to India landmass — mainland + Andaman &amp; Nicobar + Lakshadweep. This matches the native resolution of the ECMWF/ERA5 model that Open-Meteo serves.</li>
       </ul>
     </div>
 
