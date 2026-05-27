@@ -645,7 +645,24 @@ function fetchLiveCities() {
 
 Promise.all([
   fetchLiveCities().catch(() => fetch("snapshot_cities.json").then(r => r.json())),
-  fetch("india_grid_weather.json").then(r => r.ok ? r.json() : null).catch(() => null),
+  fetch("india_grid_weather.json").then(r => r.ok ? r.json() : null).catch(() => null).then(gw => {
+    // Backward-compat: support both the legacy array-of-objects and the new
+    // columnar { keys, cells } format. Normalise to array-of-objects shape
+    // for the rest of the code path.
+    if (!gw) return null;
+    if (Array.isArray(gw)) return gw;
+    if (gw && Array.isArray(gw.cells) && Array.isArray(gw.keys)) {
+      const idx = Object.fromEntries(gw.keys.map((k, i) => [k, i]));
+      return gw.cells.map(row => ({
+        lat: row[idx.lat],
+        lon: row[idx.lon],
+        temperature_2m: row[idx.t],
+        relative_humidity_2m: row[idx.rh],
+        wind_speed_10m: row[idx.w],
+      }));
+    }
+    return null;
+  }),
   fetch("india_grid.json").then(r => r.json()),
   fetch("india_temp_trend.json").then(r => r.json()),
 ]).then(([snap, gridWeather, grid, trend]) => {

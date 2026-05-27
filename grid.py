@@ -238,8 +238,23 @@ def main() -> int:
         return 0
 
     weather = fetch_grid(grid, chunk_size=args.chunk, sleep=args.sleep)
-    WEATHER_FILE.write_text(json.dumps(weather))
-    print(f"weather: {len(weather)} cells → {WEATHER_FILE.name}", file=sys.stderr)
+
+    # Write a compact columnar format — ~85% smaller than the array-of-objects
+    # form because the keys aren't repeated 4k+ times.
+    def _round(v, n):
+        return None if v is None else round(v, n)
+    cells = [[
+        round(w["lat"], 4),
+        round(w["lon"], 4),
+        _round(w.get("temperature_2m"), 1),
+        w.get("relative_humidity_2m"),
+        _round(w.get("wind_speed_10m"), 1),
+    ] for w in weather]
+    WEATHER_FILE.write_text(json.dumps(
+        {"format": "v2-columnar", "keys": ["lat", "lon", "t", "rh", "w"], "cells": cells},
+        separators=(",", ":"),
+    ))
+    print(f"weather: {len(weather)} cells → {WEATHER_FILE.name} (columnar)", file=sys.stderr)
     summarize(weather)
     if len(weather) == len(grid) and PARTIAL_FILE.exists():
         PARTIAL_FILE.unlink()
