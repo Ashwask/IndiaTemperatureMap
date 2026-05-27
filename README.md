@@ -1,5 +1,7 @@
 # India Heat · Open Temperature Platform
 
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
 An open hyperlocal India temperature map. Pulls and overlays real-time temperature
 data from every public/freemium source we could reach.
 
@@ -105,3 +107,14 @@ The cron schedule is every 3 hours UTC. Repo secrets `OPENAQ_API_KEY` and
 ## Acknowledgements
 
 Open-Meteo · OpenAQ · NASA EOSDIS GIBS · Zomato Weather Union · MET Norway · Iowa State ASOS · 7Timer · Natural Earth · WRI Resource Watch.
+
+## License
+
+This work is licensed under the
+[Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+(CC BY-NC-SA 4.0). See [`LICENSE`](./LICENSE) for the full text.
+
+In short: you may copy, share, and adapt the code and data freely **for
+non-commercial purposes**, provided you give attribution and license any
+derivative work under the same terms. Third-party data sources retain their
+own licenses; see `LICENSE` for the list.
