@@ -800,27 +800,41 @@ function renderSourceStatus(rows) {
     if (r.error) { bySource[r.source].err++; bySource[r.source].sample_err = r.error; }
     else bySource[r.source].ok++;
   });
-  tbody.innerHTML = SOURCE_META.map(s => {
-    const stat = bySource[s.name] || { ok: 0, err: 0, sample_err: null };
-    const isOk = stat.ok > 0;
-    const badge = isOk
-      ? `<span class="badge ok">${stat.ok} ok</span>`
-      : (s.env !== "—" ? `<span class="badge key">key needed</span>` : `<span class="badge blocked">${(stat.sample_err || "").slice(0, 40)}</span>`);
+  // Only render sources that returned at least one successful reading.
+  const activeSources = SOURCE_META.filter(s => (bySource[s.name] || {}).ok > 0);
+  tbody.innerHTML = activeSources.map(s => {
+    const stat = bySource[s.name];
     return `<tr style="border-bottom: 1px solid var(--border-light);">
       <td style="padding: 8px 4px; font-weight: 600; color: var(--text-main);">${s.name}</td>
-      <td style="padding: 8px 4px;">${badge}</td>
+      <td style="padding: 8px 4px;"><span class="badge ok">${stat.ok} ok</span></td>
       <td style="padding: 8px 4px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--text-body);">${s.env}</td>
       <td style="padding: 8px 4px;"><a href="https://${s.signup}" target="_blank" rel="noopener">${s.signup}</a></td>
       <td style="padding: 8px 4px; color: var(--text-muted); font-size: 12px;">${s.note}</td>
     </tr>`;
   }).join("");
+  // Show the hidden/key-gated sources in a compact footnote.
+  const dormant = SOURCE_META.filter(s => !(bySource[s.name] || {}).ok && s.env !== "—");
+  if (dormant.length) {
+    tbody.insertAdjacentHTML("beforeend",
+      `<tr><td colspan="5" style="padding: 12px 4px 4px; color: var(--text-muted); font-size: 12px;">
+        Dormant (no key set): ${dormant.map(s => `<code>${s.env}</code> (${s.name})`).join(" · ")}
+      </td></tr>`);
+  }
 }
 
 function renderComparisonTable(locs) {
   const head = document.querySelector("#comparison-table thead");
   const body = document.querySelector("#comparison-table tbody");
   if (!head || !body) return;
-  const sources = SOURCE_META.map(s => s.name);
+  // Only include sources with at least one successful reading anywhere.
+  const allReadings = locs.flatMap(l => l.readings);
+  const okCounts = {};
+  allReadings.forEach(r => {
+    if (r.error == null && r.temperature_c != null) {
+      okCounts[r.source] = (okCounts[r.source] || 0) + 1;
+    }
+  });
+  const sources = SOURCE_META.map(s => s.name).filter(n => (okCounts[n] || 0) > 0);
   head.innerHTML = `<tr style="border-bottom: 1px solid var(--border-light); text-align: left;">
     <th style="padding: 8px 4px; color: var(--text-muted); font-weight: 500; min-width: 220px;">Location</th>
     ${sources.map(s => `<th style="padding: 8px 4px; color: var(--text-muted); font-weight: 500; text-align: right; min-width: 70px;">${s}</th>`).join("")}
@@ -828,9 +842,8 @@ function renderComparisonTable(locs) {
   body.innerHTML = locs.map(loc => {
     const cells = sources.map(src => {
       const r = loc.readings.find(x => x.source === src);
-      if (!r) return `<td style="padding: 8px 4px; text-align: right; color: var(--text-muted);">—</td>`;
-      if (r.error) return `<td style="padding: 8px 4px; text-align: right; color: #9CA3AF;" title="${r.error.replace(/"/g, "&quot;")}">✕</td>`;
-      if (r.temperature_c == null) return `<td style="padding: 8px 4px; text-align: right; color: var(--text-muted);">—</td>`;
+      if (!r || r.error || r.temperature_c == null)
+        return `<td style="padding: 8px 4px; text-align: right; color: var(--text-muted);">—</td>`;
       return `<td style="padding: 8px 4px; text-align: right; font-variant-numeric: tabular-nums; color: ${colorFor(r.temperature_c)}; font-weight: 600;">${r.temperature_c.toFixed(1)}°</td>`;
     }).join("");
     return `<tr style="border-bottom: 1px solid var(--border-light);">
