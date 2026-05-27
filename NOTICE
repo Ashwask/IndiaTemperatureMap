@@ -1,0 +1,28 @@
+India Heat · Open Temperature Platform
+Copyright (c) 2026 Ashwin Kulkarni and contributors.
+
+This work is licensed under the Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0).
+See the LICENSE file for the full legal code, or visit:
+
+    https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+SPDX-License-Identifier: CC-BY-NC-SA-4.0
+
+
+Third-party data sources retain their own licenses, which apply in addition
+to (and may be more restrictive than) the terms above:
+
+    Open-Meteo data ............... CC BY 4.0
+    OpenAQ data ................... CC BY 4.0
+    NASA EOSDIS GIBS imagery ...... US Government / public domain
+    MET Norway data ............... Norwegian Licence for Open Government Data (NLOD) /
+                                    CC BY 4.0 — attribution required
+    7Timer data ................... Free for non-commercial use
+    Iowa State ASOS / METAR ....... Public domain (NWS source)
+    Zomato Weather Union .......... Zomato API Terms of Service
+    Natural Earth boundaries ...... Public domain
+    WRI Resource Watch tiles ...... Per layer (typically CC BY)
+
+When redistributing data drawn from these sources, comply with their license
+terms in addition to the terms of the CC BY-NC-SA 4.0 license.
