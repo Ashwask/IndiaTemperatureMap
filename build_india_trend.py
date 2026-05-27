@@ -29,8 +29,11 @@ CITIES = [
     ("Bangalore", 12.97, 77.59),
     ("Chennai",   13.08, 80.27),
 ]
+import datetime as _dt
 START = "1980-01-01"
-END = "2025-12-31"
+# Open-Meteo's archive endpoint (ERA5) has ~5-7 day lag — cap at today-7 to stay
+# inside the published window. Current year still appears as YTD.
+END = (_dt.date.today() - _dt.timedelta(days=7)).isoformat()
 
 def fetch() -> list[dict]:
     lats = ",".join(f"{c[1]}" for c in CITIES)
@@ -64,23 +67,34 @@ def main() -> int:
             if v is None:
                 continue
             by_year[int(t[:4])].append(v)
-        annual = {y: sum(vs) / len(vs) for y, vs in by_year.items() if len(vs) >= 350}
+        # Per-city annual mean — keep the full year when ≥350 days, otherwise
+        # flag it as year-to-date (used to render the current year as partial).
+        annual = {}
+        for y, vs in by_year.items():
+            if len(vs) >= 350:
+                annual[y] = (sum(vs) / len(vs), False)        # complete year
+            elif len(vs) >= 60:
+                annual[y] = (sum(vs) / len(vs), True)         # partial / YTD
         per_city.append((city[0], annual))
 
     # All-India mean = mean across cities for each year
     years = sorted(set().union(*[a.keys() for _, a in per_city]))
     series = []
     for y in years:
-        vals = [a[y] for _, a in per_city if y in a]
+        vals = [a[y][0] for _, a in per_city if y in a]
+        partials = [a[y][1] for _, a in per_city if y in a]
         if len(vals) < len(CITIES) * 0.75:
             continue
-        series.append({"year": y, "temperature_c": round(sum(vals) / len(vals), 3)})
+        rec = {"year": y, "temperature_c": round(sum(vals) / len(vals), 3)}
+        if any(partials):
+            rec["ytd"] = True
+        series.append(rec)
 
     OUT.write_text(json.dumps({
         "source": "Open-Meteo /v1/archive (ERA5 reanalysis + recent IFS)",
         "title": "All-India mean temperature, 1980-present",
         "cities": [c[0] for c in CITIES],
-        "method": "Annual mean per city, then mean across cities. Years with <350 days dropped.",
+        "method": "Annual mean per city, then mean across cities. Years with ≥350 days are complete; current year is partial (ytd=true).",
         "series": series,
     }, separators=(",", ":")))
     print(f"saved {len(series)} annual values → {OUT.name}", file=sys.stderr)

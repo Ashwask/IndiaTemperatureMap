@@ -1108,10 +1108,16 @@ function renderTrendCards(cities, trend) {
   const latest = series[series.length-1];
   const anomaly = latest.temperature_c - (first10.reduce((a,b)=>a+b,0)/first10.length);
 
+  const latestLabel = latest.ytd
+    ? `${latest.year} · all-India YTD mean`
+    : `${latest.year} · all-India annual mean`;
+  const latestSub = latest.ytd
+    ? "Partial year — ERA5 8-city YTD"
+    : "ERA5 8-city average";
   const cards = [
     { label: "Today · 39-city mean", value: tMean.toFixed(1) + " °C", sub: "Open-Meteo current observations" },
     { label: "Today · hottest", value: Math.max(...temps).toFixed(1) + " °C", sub: cities.find(c => c.temperature_2m_c === Math.max(...temps)).name },
-    { label: latest.year + " · all-India annual mean", value: latest.temperature_c.toFixed(2) + " °C", sub: "ERA5 8-city average" },
+    { label: latestLabel, value: latest.temperature_c.toFixed(2) + " °C", sub: latestSub },
     { label: "Decadal warming (1980s → 2020s)", value: (decadalDelta >= 0 ? "+" : "") + decadalDelta.toFixed(2) + " °C", sub: anomaly.toFixed(2) + " °C anomaly vs 1980s" },
   ];
   document.getElementById("trend-cards").innerHTML = cards.map(c =>
@@ -1121,19 +1127,38 @@ function renderTrendCards(cities, trend) {
 
 function renderTrendChart(trend) {
   const recs = trend.series;
+  // Treat YTD year separately — exclude from main line + rolling mean (it's partial).
+  const completeRecs = recs.filter(r => !r.ytd);
+  const ytdRec = recs.find(r => r.ytd) || null;
   const W = 1000, H = 280, P = { l: 50, r: 20, t: 20, b: 32 };
-  const years = recs.map(r => r.year);
   const temps = recs.map(r => r.temperature_c);
   const yMin = Math.floor(Math.min(...temps) * 4) / 4;
   const yMax = Math.ceil(Math.max(...temps) * 4) / 4;
   const xScale = i => P.l + (i / (recs.length - 1)) * (W - P.l - P.r);
   const yScale = v => P.t + (1 - (v - yMin) / (yMax - yMin)) * (H - P.t - P.b);
-  const tempPath = recs.map((r, i) => `${i ? "L" : "M"}${xScale(i).toFixed(1)},${yScale(r.temperature_c).toFixed(1)}`).join(" ");
-  const roll = recs.map((r, i) => {
-    const w = recs.slice(Math.max(0, i-4), Math.min(recs.length, i+6));
+  // Main annual-mean path uses only complete years
+  const tempPath = completeRecs.map((r, i) => {
+    const idx = recs.indexOf(r);
+    return `${i ? "L" : "M"}${xScale(idx).toFixed(1)},${yScale(r.temperature_c).toFixed(1)}`;
+  }).join(" ");
+  const roll = completeRecs.map((r, i) => {
+    const w = completeRecs.slice(Math.max(0, i-4), Math.min(completeRecs.length, i+6));
     return w.reduce((a,b) => a + b.temperature_c, 0) / w.length;
   });
-  const rollPath = roll.map((v, i) => `${i ? "L" : "M"}${xScale(i).toFixed(1)},${yScale(v).toFixed(1)}`).join(" ");
+  const rollPath = roll.map((v, i) => {
+    const idx = recs.indexOf(completeRecs[i]);
+    return `${i ? "L" : "M"}${xScale(idx).toFixed(1)},${yScale(v).toFixed(1)}`;
+  }).join(" ");
+  // YTD marker — open circle with label, placed at the same x-axis position
+  const ytdDot = ytdRec ? `
+    <line x1="${xScale(recs.indexOf(ytdRec))}" y1="${yScale(ytdRec.temperature_c)}"
+          x2="${xScale(recs.indexOf(completeRecs[completeRecs.length-1]))}" y2="${yScale(completeRecs[completeRecs.length-1].temperature_c)}"
+          stroke="#FF9900" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.55"/>
+    <circle cx="${xScale(recs.indexOf(ytdRec))}" cy="${yScale(ytdRec.temperature_c)}" r="5"
+            fill="#FFFFFF" stroke="#C00000" stroke-width="2"/>
+    <text x="${xScale(recs.indexOf(ytdRec)) + 8}" y="${yScale(ytdRec.temperature_c) - 6}"
+          font-size="10" fill="#C00000" font-family="Inter" font-weight="600">${ytdRec.year} YTD</text>
+  ` : "";
 
   // y gridlines
   const yTicks = [];
@@ -1153,12 +1178,15 @@ function renderTrendChart(trend) {
       }).join("")}
       <path d="${tempPath}" stroke="#FF9900" stroke-width="1.2" fill="none" opacity="0.5"/>
       <path d="${rollPath}" stroke="#C00000" stroke-width="2.2" fill="none"/>
+      ${ytdDot}
       <g font-family="Inter" font-size="11">
-        <rect x="${W-P.r-180}" y="${P.t}" width="172" height="44" fill="#FFFFFF" stroke="#E2E8F0" rx="6"/>
+        <rect x="${W-P.r-180}" y="${P.t}" width="172" height="${ytdRec ? 60 : 44}" fill="#FFFFFF" stroke="#E2E8F0" rx="6"/>
         <line x1="${W-P.r-170}" y1="${P.t+15}" x2="${W-P.r-150}" y2="${P.t+15}" stroke="#FF9900" stroke-width="1.5" opacity="0.5"/>
         <text x="${W-P.r-145}" y="${P.t+19}" fill="#374151">annual mean</text>
         <line x1="${W-P.r-170}" y1="${P.t+33}" x2="${W-P.r-150}" y2="${P.t+33}" stroke="#C00000" stroke-width="2.5"/>
         <text x="${W-P.r-145}" y="${P.t+37}" fill="#374151">10-year rolling mean</text>
+        ${ytdRec ? `<circle cx="${W-P.r-160}" cy="${P.t+50}" r="4" fill="#FFFFFF" stroke="#C00000" stroke-width="2"/>
+                    <text x="${W-P.r-145}" y="${P.t+54}" fill="#374151">YTD (partial year)</text>` : ""}
       </g>
     </svg>`;
 }
