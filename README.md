@@ -1,7 +1,7 @@
 # India Heat · Open Temperature Platform
 
-An open hyperlocal India temperature map in the OAQ tradition. Pulls and overlays
-real-time temperature data from every public/freemium source we could reach.
+An open hyperlocal India temperature map. Pulls and overlays real-time temperature
+data from every public/freemium source we could reach.
 
 ## What's on the map
 

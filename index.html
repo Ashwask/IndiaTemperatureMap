@@ -26,7 +26,7 @@
     --text-body: #374151;
     --text-muted: #6B7280;
 
-    /* Temperature scale — adapted from OAQ's AQI bands */
+    /* Temperature scale — six-band AQI-style ramp */
     --t-cool: #00B050;
     --t-mild: #92D050;
     --t-warm: #FFD60A;
@@ -388,7 +388,7 @@
 
   <div class="panel">
     <h3>Temperature-band distribution</h3>
-    <div class="panel-sub">How many of today's stations fall into each OAQ-style band.</div>
+    <div class="panel-sub">How many of today's cities fall into each temperature band.</div>
     <div id="band-chart"></div>
   </div>
 </section>
@@ -433,7 +433,7 @@
 <section id="about-view" class="view">
   <div style="padding: 24px 32px; max-width: 860px; margin: 0 auto;">
     <h1 style="margin: 0 0 6px; color: var(--text-main); font-size: 22px;">About this project</h1>
-    <p style="margin: 0 0 24px; color: var(--text-muted);">An open India temperature platform built in the OAQ tradition — same UI patterns, applied to temperature instead of air quality.</p>
+    <p style="margin: 0 0 24px; color: var(--text-muted);">An open India temperature platform. Multiple independent sources, side-by-side comparison, hyperlocal ground sensors where they exist.</p>
 
     <div class="panel">
       <h3>What's in the map</h3>
@@ -484,7 +484,7 @@ document.querySelectorAll(".nav a").forEach(a => {
   });
 });
 
-// ===== OAQ-style discrete temperature bands =====
+// ===== Discrete temperature bands (six-tier ramp) =====
 const BANDS = [
   { max: 25,  color: "#00B050", label: "Cool (<25 °C)" },
   { max: 30,  color: "#92D050", label: "Mild (25–30 °C)" },
@@ -571,7 +571,7 @@ Promise.all([
   });
 
   // If the 4,441-cell weather payload is available, render the grid as colored heat
-  // cells (0.25° rectangles, OAQ-style band colors). Otherwise show geometry dots.
+  // cells (0.25° rectangles, six-band ramp). Otherwise show geometry dots.
   const gridResolution = 0.25;
   const half = gridResolution / 2;
   if (Array.isArray(gridWeather) && gridWeather.length) {
