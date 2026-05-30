@@ -1,14 +1,14 @@
 # India Temperature Map
 
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-[![Live](https://img.shields.io/badge/live-ashwask.github.io%2FIndiaTemperatureMap-008080)](https://ashwask.github.io/IndiaTemperatureMap/)
+[![Live](https://img.shields.io/badge/live-indiatemperaturemap.pages.dev-008080)](https://indiatemperaturemap.pages.dev/)
 
 An open hyperlocal India temperature platform. Pulls real-time temperature
 data from every public/freemium source we could reach and overlays them on a
 single Leaflet map — three browser-live models per city, a 4,647-cell heat
 grid covering India's full claim, plus ground-sensor networks where they exist.
 
-**Live site:** https://ashwask.github.io/IndiaTemperatureMap/
+**Live site:** https://indiatemperaturemap.pages.dev/
 
 ## On the map
 
