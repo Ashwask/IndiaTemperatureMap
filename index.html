@@ -251,6 +251,33 @@
   .legend-row .sw { height: 12px; border-radius: 3px; }
   .legend-row .ct { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
+  .mode-toggle {
+    display: flex;
+    gap: 4px;
+    margin: 0 0 10px;
+    background: #F1F5F9;
+    border-radius: 8px;
+    padding: 3px;
+  }
+  .mode-toggle button {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .mode-toggle button.active {
+    background: #FFFFFF;
+    color: var(--text-main);
+    box-shadow: var(--shadow-sm);
+  }
+
   .ref {
     font-size: 12px;
     color: var(--text-muted);
@@ -416,16 +443,37 @@
       <div class="mini"><div class="v" id="stat-max">—</div><div class="l">Max</div></div>
     </div>
 
-    <h2>Temperature scale (°C)</h2>
-    <div class="legend-grad">
-      <div style="background: var(--t-cool)"></div>
-      <div style="background: var(--t-mild)"></div>
-      <div style="background: var(--t-warm)"></div>
-      <div style="background: var(--t-hot)"></div>
-      <div style="background: var(--t-extreme)"></div>
-      <div style="background: var(--t-severe)"></div>
+    <h2>Heat grid</h2>
+    <div class="mode-toggle" id="grid-mode-toggle" hidden>
+      <button type="button" data-mode="absolute" class="active">Absolute °C</button>
+      <button type="button" data-mode="anomaly">vs normal</button>
     </div>
-    <div class="legend-labels"><span>&lt;25</span><span>25–30</span><span>30–35</span><span>35–40</span><span>40–43</span><span>43+</span></div>
+
+    <div id="legend-absolute">
+      <div class="legend-grad">
+        <div style="background: var(--t-cool)"></div>
+        <div style="background: var(--t-mild)"></div>
+        <div style="background: var(--t-warm)"></div>
+        <div style="background: var(--t-hot)"></div>
+        <div style="background: var(--t-extreme)"></div>
+        <div style="background: var(--t-severe)"></div>
+      </div>
+      <div class="legend-labels"><span>&lt;25</span><span>25–30</span><span>30–35</span><span>35–40</span><span>40–43</span><span>43+</span></div>
+    </div>
+
+    <div id="legend-anomaly" hidden>
+      <div class="legend-grad">
+        <div style="background: #2166AC"></div>
+        <div style="background: #67A9CF"></div>
+        <div style="background: #D1E5F0"></div>
+        <div style="background: #F7F7F7"></div>
+        <div style="background: #FDDBC7"></div>
+        <div style="background: #EF8A62"></div>
+        <div style="background: #B2182B"></div>
+      </div>
+      <div class="legend-labels"><span>−6</span><span>−3</span><span>−1</span><span>0</span><span>+1</span><span>+3</span><span>+6</span></div>
+      <div class="ref" style="margin-top:6px">Blue = cooler, red = hotter than the 1991–2020 average for this month (°C).</div>
+    </div>
 
     <h2>Layers</h2>
     <div class="ref">Toggle in top-right of the map. Defaults show the city snapshot.</div>
@@ -608,6 +656,22 @@ function colorFor(t) {
   return b ? b.color : "#9CA3AF";
 }
 
+// ===== Diverging anomaly scale (today − 1991–2020 monthly normal, °C) =====
+// Blue = cooler than normal, neutral near zero, red = hotter. ColorBrewer RdBu.
+const ANOM_BANDS = [
+  { max: -6, color: "#2166AC" },
+  { max: -3, color: "#67A9CF" },
+  { max: -1, color: "#D1E5F0" },
+  { max:  1, color: "#F7F7F7" },
+  { max:  3, color: "#FDDBC7" },
+  { max:  6, color: "#EF8A62" },
+  { max: 999, color: "#B2182B" },
+];
+function colorForAnomaly(delta) {
+  if (delta == null || Number.isNaN(delta)) return "#9CA3AF";
+  return (ANOM_BANDS.find(b => delta < b.max) || ANOM_BANDS[ANOM_BANDS.length - 1]).color;
+}
+
 // ===== map =====
 const MAP_BOUNDS = [[6.0, 67.0], [37.5, 98.0]];
 const map = L.map("map", {
@@ -766,7 +830,20 @@ Promise.all([
   }),
   fetch("india_grid.json").then(r => r.json()),
   fetch("india_temp_trend.json").then(r => r.json()),
-]).then(([snap, gridWeather, grid, trend]) => {
+  // 1991–2020 monthly normals (static). Columnar { keys:[lat,lon,m1..m12], cells }
+  // → lookup keyed by "lat,lon" (2dp) holding the 12 monthly means. Null if absent.
+  fetch("india_grid_normals.json").then(r => r.ok ? r.json() : null).catch(() => null).then(nm => {
+    if (!nm || !Array.isArray(nm.cells) || !Array.isArray(nm.keys)) return null;
+    const idx = Object.fromEntries(nm.keys.map((k, i) => [k, i]));
+    const months = Array.from({ length: 12 }, (_, m) => idx["m" + (m + 1)]);
+    const map = {};
+    for (const row of nm.cells) {
+      const key = row[idx.lat].toFixed(2) + "," + row[idx.lon].toFixed(2);
+      map[key] = months.map(mi => row[mi]);
+    }
+    return map;
+  }),
+]).then(([snap, gridWeather, grid, trend, gridNormals]) => {
   const cities = snap.cities;
   const temps = cities.map(c => c.temperature_2m_c);
   const tMin = Math.min(...temps), tMax = Math.max(...temps);
@@ -809,35 +886,71 @@ Promise.all([
     setTimeout(() => enrichSecondaryModels(cities, markersByName), 50);
   }
 
-  // If the 4,441-cell weather payload is available, render the grid as colored heat
-  // cells (0.25° rectangles, six-band ramp). Otherwise show geometry dots.
+  // Render the 0.25° heat grid. Two modes:
+  //   "absolute" — six-band temperature ramp (default)
+  //   "anomaly"  — today's temp minus the cell's 1991–2020 monthly normal,
+  //                on a diverging blue→red scale. Needs gridNormals (else N/A).
   const gridResolution = 0.25;
   const half = gridResolution / 2;
-  if (Array.isArray(gridWeather) && gridWeather.length) {
+  const currentMonth = new Date().getMonth();   // 0..11, used to pick the normal
+  const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  function normalFor(g) {
+    if (!gridNormals) return null;
+    const row = gridNormals[g.lat.toFixed(2) + "," + g.lon.toFixed(2)];
+    return row ? row[currentMonth] : null;
+  }
+
+  function renderGridLayer(mode) {
+    gridLayer.clearLayers();
+    if (!(Array.isArray(gridWeather) && gridWeather.length)) {
+      grid.forEach(g => gridLayer.addLayer(L.circleMarker([g.lat, g.lon], {
+        radius: 1.2, fillColor: "#008080", color: "#008080", weight: 0, fillOpacity: 0.35,
+      })));
+      return;
+    }
     gridWeather.forEach(g => {
       if (g.temperature_2m == null) return;
+      const norm = normalFor(g);
+      const anom = norm != null ? +g.temperature_2m - norm : null;
+      const color = mode === "anomaly" ? colorForAnomaly(anom) : colorFor(g.temperature_2m);
       const bounds = [[g.lat - half, g.lon - half], [g.lat + half, g.lon + half]];
+      const anomRow = norm != null
+        ? `<div class="prow"><span>vs ${MONTH_NAMES[currentMonth]} normal</span><b>${anom >= 0 ? "+" : ""}${anom.toFixed(1)} °C</b></div>
+           <div class="prow"><span>1991–2020 normal</span><b>${norm.toFixed(1)} °C</b></div>`
+        : "";
       gridLayer.addLayer(L.rectangle(bounds, {
-        color: colorFor(g.temperature_2m),
-        fillColor: colorFor(g.temperature_2m),
-        weight: 0,
-        fillOpacity: 0.55,
+        color, fillColor: color, weight: 0, fillOpacity: 0.55,
       }).bindPopup(`
         <div class="pname">Grid cell</div>
         <div class="prow"><span>Coords</span><b>${g.lat.toFixed(2)}, ${g.lon.toFixed(2)}</b></div>
         <div class="prow"><span>Temperature</span><b>${(+g.temperature_2m).toFixed(1)} °C</b></div>
+        ${anomRow}
         ${g.relative_humidity_2m != null ? `<div class="prow"><span>Humidity</span><b>${g.relative_humidity_2m}%</b></div>` : ""}
         ${g.wind_speed_10m != null ? `<div class="prow"><span>Wind</span><b>${g.wind_speed_10m} km/h</b></div>` : ""}
         <div class="prow"><span>Source</span><b>Open-Meteo, 0.25° lattice</b></div>
       `));
     });
-  } else {
-    grid.forEach(g => {
-      gridLayer.addLayer(L.circleMarker([g.lat, g.lon], {
-        radius: 1.2, fillColor: "#008080", color: "#008080", weight: 0, fillOpacity: 0.35,
-      }));
+  }
+
+  // Wire the Absolute/Anomaly mode toggle (only meaningful if normals loaded).
+  let gridMode = "absolute";
+  const modeToggle = document.getElementById("grid-mode-toggle");
+  if (gridNormals && modeToggle) {
+    modeToggle.hidden = false;
+    modeToggle.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (btn.dataset.mode === gridMode) return;
+        gridMode = btn.dataset.mode;
+        modeToggle.querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+        document.getElementById("legend-absolute").hidden = gridMode !== "absolute";
+        document.getElementById("legend-anomaly").hidden = gridMode !== "anomaly";
+        renderGridLayer(gridMode);
+      });
     });
   }
+
+  renderGridLayer(gridMode);
 
   const overlays = {
     "Cities (Open-Meteo)": cityLayer,

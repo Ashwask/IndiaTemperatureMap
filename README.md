@@ -21,6 +21,12 @@ grid covering India's full claim, plus ground-sensor networks where they exist.
   PoK) + Ladakh (incl. Aksai Chin + Karakoram). Polygon: simplified from
   `datameet/maps` composite. Range typically –22 °C in Karakoram to +41 °C in
   Rajasthan.
+  - **Anomaly toggle** — switch the grid between *Absolute °C* and *vs normal*:
+    today's reading minus the cell's **1991–2020 monthly normal** (WMO-standard
+    30-year baseline), on a diverging blue→red scale (blue = cooler than normal,
+    red = hotter). Answers "is this temperature unusual for this month?" not just
+    "how hot is it." Toggle is on the Live Map sidebar; falls back to hidden if
+    the baseline file is absent.
 - **OpenAQ ground stations** — ~570 India stations (509 CPCB regulatory +
   AirGradient + Clean Air Catalyst). ~340 report current temperature.
 - **Weather Union ground sensors** — Zomato's hyperlocal fleet, ~37 discovered
@@ -35,7 +41,7 @@ Four tabs:
 
 | Tab | What it shows |
 |---|---|
-| **Live Map** | Leaflet map with overlays. Layer control starts collapsed; hover to expand, mouse-out to dismiss. Pan-locked to India's bbox with a translucent mask fading out neighbouring countries. |
+| **Live Map** | Leaflet map with overlays. Layer control starts collapsed; hover to expand, mouse-out to dismiss. Pan-locked to India's bbox with a translucent mask fading out neighbouring countries. Heat-grid **Absolute °C / vs normal** toggle in the sidebar. |
 | **Trends** | Today's 39-city distribution, six-band histogram, and the All-India 1980-2025 annual-mean trend (Open-Meteo ERA5 archive). |
 | **Sources** | All 12 providers with status badges (`ok · key needed · IP gated · idle`), plus the per-city × per-source comparison matrix. |
 | **About** | Project description, data sources, what's gated, and License. |
@@ -104,6 +110,7 @@ The page is engineered to render fast even on a cold cache:
 | `fetch.py` | 39-city Open-Meteo snapshot (CLI) |
 | `build_snapshot_cities.py` | Reshape `fetch.py` output into `snapshot_cities.json` |
 | `grid.py` | 0.25° lattice fetch over India, rate-aware + resumable (JSONL partial); writes v2-columnar weather file |
+| `build_grid_normals.py` | **Static** 1991–2020 monthly climatology baseline. Fetches a coarse lattice from Open-Meteo's archive (ERA5) and IDW-interpolates to the 0.25° grid; waits out the hourly rate limit, resumable. Run once — not on the cron. |
 | `fetch_openaq.py` | OpenAQ India temperature stations |
 | `fetch_datagovin.py` | CPCB AQ via data.gov.in (kept for completeness; AQ only) |
 | `discover_weatherunion.py` | Probe Weather Union sensors across 88 Indian neighborhoods |
@@ -125,6 +132,7 @@ The page is engineered to render fast even on a cold cache:
 | `stations_openaq.json` | OpenAQ India temperature stations | array of station objects |
 | `stations_weatherunion.json` | Weather Union discovered sensors | array of sensor objects |
 | `india_temp_readings.json` | Multi-source comparison (12 × 39) | array of readings |
+| `india_grid_normals.json` | 1991–2020 monthly normal per grid cell (**static** — not cron-refreshed) | **v1-normals columnar** `{keys:[lat,lon,m1…m12], cells}` |
 
 ## Run locally
 
@@ -140,6 +148,10 @@ WEATHER_UNION_KEY=... python3 discover_weatherunion.py
 python3 grid.py --resolution 0.25
 WEATHER_UNION_KEY=... python3 india_temp_pull.py --locations all_cities.csv
 python3 build_india_trend.py
+
+# 3. (One-time) Build the 1991–2020 anomaly baseline. Static — re-run only to
+#    refresh or at a finer --coarse-res. Waits out the hourly archive limit.
+python3 build_grid_normals.py --coarse-res 1.0
 ```
 
 ## Triggering a refresh in CI

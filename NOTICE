@@ -14,6 +14,9 @@ Third-party data sources retain their own licenses, which apply in addition
 to (and may be more restrictive than) the terms above:
 
     Open-Meteo data ............... CC BY 4.0
+    Open-Meteo Archive (ERA5) ..... CC BY 4.0 — basis of the 1991–2020 anomaly
+                                    baseline; ERA5 © Copernicus Climate Change
+                                    Service / ECMWF
     OpenAQ data ................... CC BY 4.0
     NASA EOSDIS GIBS imagery ...... US Government / public domain
     MET Norway data ............... Norwegian Licence for Open Government Data (NLOD) /
