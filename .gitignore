@@ -1,8 +1,12 @@
 # local-only intermediate state
 ne_50m_countries.geojson
 india_grid_weather.partial.jsonl
+india_grid_normals.partial.jsonl
 *.csv
 !all_cities.csv
+
+# python bytecode
+__pycache__/
 
 # safety net for env files
 .env
