@@ -1,6 +1,6 @@
 # India Temperature Map
 
-[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC%20BY--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
 [![Live](https://img.shields.io/badge/live-indiatemperaturemap.pages.dev-008080)](https://indiatemperaturemap.pages.dev/)
 
 An open hyperlocal India temperature platform. Pulls real-time temperature
@@ -112,7 +112,7 @@ The page is engineered to render fast even on a cold cache:
 | `cities.json` | 39-city coordinate list (state capitals + major metros) |
 | `all_cities.csv` | Same 39 cities in CSV form (input to `india_temp_pull.py` in CI) |
 | `india_polygon.json` | India full-claim MultiPolygon, simplified from datameet/maps |
-| `LICENSE` · `NOTICE` | CC BY-NC-SA 4.0 license + third-party source attributions |
+| `LICENSE` · `NOTICE` | CC BY-SA 4.0 license + third-party source attributions |
 
 ### Generated data files (refreshed by cron)
 
@@ -156,7 +156,7 @@ Open-Meteo · OpenAQ · Zomato Weather Union · MET Norway · Iowa State ASOS ·
 ## License
 
 This work is licensed under the
-[Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[Creative Commons Attribution-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/)
 (CC BY-NC-SA 4.0). See [`LICENSE`](./LICENSE) for the full legal code and
 [`NOTICE`](./NOTICE) for third-party data licenses.
 

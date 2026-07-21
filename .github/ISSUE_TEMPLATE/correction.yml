@@ -1,0 +1,23 @@
+name: Data correction or addition
+description: Report a wrong, stale or missing value — or suggest an addition
+title: "[data] "
+labels: ["data"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong or missing?
+      description: The specific value, place or record.
+    validations:
+      required: true
+  - type: input
+    id: correct
+    attributes:
+      label: Correct value (if known)
+  - type: input
+    id: source
+    attributes:
+      label: Source to verify against
+      description: A link, document or dataset we can check.
+    validations:
+      required: true
